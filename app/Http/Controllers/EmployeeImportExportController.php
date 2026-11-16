@@ -4,17 +4,21 @@ namespace App\Http\Controllers;
 
 use App\Enums\ContractType;
 use App\Enums\EmploymentType;
+use App\Enums\NoteType;
 use App\Enums\Permission;
 use App\Http\Controllers\Concerns\HandlesCsv;
 use App\Models\Discipline;
 use App\Models\Employee;
 use App\Models\Team;
+use App\Models\WorkSchedule;
+use App\Services\XlsxWriter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class EmployeeImportExportController extends Controller
@@ -40,9 +44,13 @@ class EmployeeImportExportController extends Controller
         ]);
     }
 
-    public function export(Request $request): StreamedResponse
+    public function export(Request $request): StreamedResponse|BinaryFileResponse
     {
         Gate::authorize('viewAny', Employee::class);
+
+        if ($request->query('format') !== 'csv') {
+            return $this->exportWorkbook($request);
+        }
 
         $private = Gate::allows(Permission::EmployeesViewPrivate->value);
         $contracts = Gate::allows(Permission::ContractsView->value);
@@ -50,7 +58,7 @@ class EmployeeImportExportController extends Controller
         $headers = [...self::PUBLIC_FIELDS, ...($private ? self::PRIVATE_FIELDS : []), ...($contracts ? self::CONTRACT_FIELDS : [])];
 
         $employees = Employee::query()
-            ->with(['team', 'discipline', 'manager', 'currentContract'])
+            ->with(['teams', 'disciplines', 'manager', 'currentContract'])
             ->filter($request->query())
             ->orderBy('last_name')->orderBy('first_name')
             ->cursor();
@@ -60,8 +68,8 @@ class EmployeeImportExportController extends Controller
                 $contract = $employee->currentContract;
                 $values = [
                     ...$employee->only(array_merge(self::PUBLIC_FIELDS, self::PRIVATE_FIELDS)),
-                    'team' => $employee->team?->name,
-                    'discipline' => $employee->discipline?->name,
+                    'team' => $employee->teams->pluck('name')->implode('|'),
+                    'discipline' => $employee->disciplines->pluck('name')->implode('|'),
                     'manager_email' => $employee->manager?->email,
                     'hired_at' => $employee->hired_at?->format('Y-m-d'),
                     'left_at' => $employee->left_at?->format('Y-m-d'),
@@ -78,6 +86,73 @@ class EmployeeImportExportController extends Controller
         })();
 
         return $this->streamCsv('medewerkers-'.now()->format('Y-m-d').'.csv', $headers, $rows);
+    }
+
+    /**
+     * Excel workbook with a tab per subject; tabs are only included when the user may see that data.
+     */
+    private function exportWorkbook(Request $request): BinaryFileResponse
+    {
+        $private = Gate::allows(Permission::EmployeesViewPrivate->value);
+        $employees = Employee::query()
+            ->with(['teams', 'disciplines', 'manager', 'currentContract', 'contracts', 'schedules', 'leaveRequests.leaveType', 'ledgerEntries', 'absences', 'notes.author'])
+            ->filter($request->query())->orderBy('last_name')->orderBy('first_name')->get();
+        $yes = fn (bool $value) => $value ? 'Ja' : 'Nee';
+        $each = fn (callable $map) => $employees->flatMap(fn (Employee $e) => $map($e));
+
+        $headers = ['Personeelsnummer', 'Naam', 'Werk e-mail', 'Telefoon', 'Mobiel', 'Functie', 'Team', 'Discipline', 'Leidinggevende', 'In dienst', 'Uit dienst', 'Reden vertrek', 'In dienst nu'];
+        if ($private) {
+            array_push($headers, 'Geslacht', 'Geboortedatum', 'Privé e-mail', 'Adres', 'Postcode', 'Plaats', 'Land', 'Nationaliteit', 'IBAN', 'Noodcontact', 'Telefoon noodcontact');
+        }
+
+        $gender = ['male' => 'Man', 'female' => 'Vrouw', 'other' => 'Anders'];
+        $main = $employees->map(fn (Employee $e) => [
+            $e->employee_number, $e->full_name, $e->email, $e->phone, $e->mobile, $e->job_title, $e->teams->pluck('name')->implode(', '), $e->disciplines->pluck('name')->implode(', '),
+            $e->manager?->full_name, $e->hired_at, $e->left_at, $e->leave_reason, $yes($e->is_employed),
+            ...($private ? [$gender[$e->gender] ?? null, $e->date_of_birth, $e->private_email, $e->street, $e->zipcode, $e->city, $e->country,
+                $e->nationality, $e->iban, $e->emergency_contact_name, $e->emergency_contact_phone] : []),
+        ]);
+
+        $book = XlsxWriter::make()->sheet('Medewerkers', $headers, $main);
+
+        if (Gate::allows(Permission::ContractsView->value)) {
+            $book->sheet('Contracten', ['Medewerker', 'Contractsoort', 'Dienstverband', 'Startdatum', 'Einddatum', 'Uren per week', 'Bruto maandsalaris', 'Opmerking'],
+                $each(fn (Employee $e) => $e->contracts->map(fn ($c) => [
+                    $e->full_name, $c->contract_type->label(), $c->employment_type->label(), $c->start_date, $c->end_date,
+                    $c->hours_per_week !== null ? (float) $c->hours_per_week : null, $c->gross_monthly_salary !== null ? (float) $c->gross_monthly_salary : null, $c->remarks,
+                ])));
+
+            $days = WorkSchedule::WEEKDAYS;
+            $book->sheet('Roosters', ['Medewerker', 'Begindatum', 'Einddatum', 'Type', 'Week', ...array_map(fn ($d) => $d.' (uren)', $days), 'Uren per week', 'Kostprijs per uur', 'Verkooptarief per uur'],
+                $each(fn (Employee $e) => $e->schedules->flatMap(fn (WorkSchedule $s) => collect($s->alternating ? ['odd' => 'Oneven weken', 'even' => 'Even weken'] : ['odd' => 'Elke week'])
+                    ->map(fn ($label, $week) => [
+                        $e->full_name, $s->effective_from, $e->scheduleEnd($s), $s->alternating ? 'Even/oneven' : 'Elke week', $label,
+                        ...array_map(fn ($d) => WorkSchedule::dayHours($s->pattern[$week][$d] ?? null), array_keys($days)), $s->weeklyHours($week),
+                        $s->cost_rate !== null ? (float) $s->cost_rate : null, $s->sales_rate !== null ? (float) $s->sales_rate : null,
+                    ])->values())));
+
+        }
+
+        if (Gate::allows(Permission::LeaveManage->value) || Gate::allows(Permission::LeaveApprove->value)) {
+            $book->sheet('Verlofaanvragen', ['Medewerker', 'Soort', 'Van', 'Tot en met', 'Uren', 'Status', 'Toelichting', 'Beslissing'],
+                $each(fn (Employee $e) => $e->leaveRequests->map(fn ($r) => [
+                    $e->full_name, $r->leaveType->name, $r->start_date, $r->end_date, (float) $r->hours, $r->status->label(), $r->note, $r->decision_note,
+                ])));
+            $book->sheet('Verlofsaldo', ['Medewerker', 'Datum', 'Saldo', 'Reden', 'Omschrijving', 'Uren'],
+                $each(fn (Employee $e) => $e->ledgerEntries->map(fn ($l) => [$e->full_name, $l->entry_date, $l->kind->label(), $l->reason->label(), $l->description, (float) $l->hours])));
+        }
+
+        if (Gate::allows(Permission::AbsenceManage->value)) {
+            $book->sheet('Verzuim', ['Medewerker', 'Soort', 'Eerste ziektedag', 'Hersteld op', 'Percentage', 'Opmerking'],
+                $each(fn (Employee $e) => $e->absences->map(fn ($a) => [$e->full_name, $a->type->label(), $a->start_date, $a->end_date, $a->percentage, $a->note])));
+        }
+
+        if (Gate::allows(Permission::EmployeesEdit->value)) {
+            $book->sheet('Tijdlijn', ['Medewerker', 'Datum', 'Soort', 'Auteur', 'Bericht'],
+                $each(fn (Employee $e) => $e->notes->map(fn ($n) => [$e->full_name, $n->created_at, NoteType::tryFrom($n->type)?->label(), $n->author?->name, $n->body])));
+        }
+
+        return $book->download('medewerkers-'.now()->format('Y-m-d').'.xlsx');
     }
 
     public function template(): StreamedResponse
@@ -164,14 +239,16 @@ class EmployeeImportExportController extends Controller
             }
 
             $employee = Employee::create($data + [
-                'team_id' => $teamName ? Team::firstOrCreate(['name' => $teamName])->id : null,
-                'discipline_id' => $disciplineName ? Discipline::firstOrCreate(['name' => $disciplineName])->id : null,
                 'is_active' => empty($data['left_at']) || $data['left_at'] >= today()->format('Y-m-d'),
             ]);
 
             if ($employee->employee_number === null) {
                 $employee->update(['employee_number' => sprintf('M%04d', $employee->id)]);
             }
+
+            $names = fn (?string $value) => array_values(array_filter(array_map('trim', explode('|', (string) $value))));
+            $employee->teams()->sync(array_map(fn ($name) => Team::firstOrCreate(['name' => $name])->id, $names($teamName)));
+            $employee->disciplines()->sync(array_map(fn ($name) => Discipline::firstOrCreate(['name' => $name])->id, $names($disciplineName)));
 
             if ($managerEmail) {
                 $managers[$employee->id] = [$line, strtolower($managerEmail)];

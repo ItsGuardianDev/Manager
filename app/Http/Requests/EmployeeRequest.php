@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\EmployeeType;
+use App\Models\Employee;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -38,9 +40,14 @@ class EmployeeRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:50'],
             'mobile' => ['nullable', 'string', 'max:50'],
             'job_title' => ['nullable', 'string', 'max:150'],
-            'team_id' => ['nullable', 'exists:teams,id'],
+            'team_ids' => ['nullable', 'array'],
+            'team_ids.*' => ['exists:teams,id'],
+            'discipline_ids' => ['nullable', 'array'],
+            'discipline_ids.*' => ['exists:disciplines,id'],
+            'employee_type' => ['nullable', Rule::enum(EmployeeType::class)],
+            'photo' => ['nullable', 'image', 'max:3072'],
+            'person_id' => ['nullable', 'exists:people,id'],
             'manager_id' => ['nullable', 'exists:employees,id', Rule::notIn(array_filter([$employee?->id]))],
-            'discipline_id' => ['nullable', 'exists:disciplines,id'],
             'hired_at' => ['nullable', 'date'],
             'gender' => ['nullable', Rule::in(['male', 'female', 'other'])],
             'date_of_birth' => ['nullable', 'date', 'before:today'],
@@ -54,6 +61,11 @@ class EmployeeRequest extends FormRequest
             'iban' => ['nullable', 'regex:/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/'],
             'emergency_contact_name' => ['nullable', 'string', 'max:150'],
             'emergency_contact_phone' => ['nullable', 'string', 'max:50'],
+            'marital_status' => ['nullable', Rule::in(array_keys(Employee::MARITAL_STATUSES))],
+            'private_phone' => ['nullable', 'string', 'max:50'],
+            'linkedin_url' => ['nullable', 'string', 'max:255'],
+            'twitter_url' => ['nullable', 'string', 'max:255'],
+            'facebook_url' => ['nullable', 'string', 'max:255'],
             'user_group_id' => ['nullable', 'exists:user_groups,id'],
             'invite' => ['nullable', 'boolean'],
         ];
@@ -67,7 +79,7 @@ class EmployeeRequest extends FormRequest
         return [
             'first_name' => 'voornaam', 'last_name' => 'achternaam', 'email' => 'e-mailadres', 'employee_number' => 'personeelsnummer',
             'manager_id' => 'leidinggevende', 'hired_at' => 'datum in dienst', 'date_of_birth' => 'geboortedatum',
-            'private_email' => 'privé e-mail', 'iban' => 'IBAN', 'bsn' => 'BSN',
+            'private_email' => 'privé e-mail', 'photo' => 'profielfoto', 'employee_type' => 'soort medewerker', 'iban' => 'IBAN', 'bsn' => 'BSN',
         ];
     }
 

@@ -8,6 +8,7 @@ enum NoteType: string
     case Email = 'email';
     case Phone = 'phone';
     case Meeting = 'meeting';
+    case Event = 'event';
 
     public function label(): string
     {
@@ -16,7 +17,18 @@ enum NoteType: string
             self::Email => 'E-mail',
             self::Phone => 'Telefoongesprek',
             self::Meeting => 'Gesprek',
+            self::Event => 'Gebeurtenis',
         };
+    }
+
+    /**
+     * Types a user can pick when writing a message (events are system generated).
+     *
+     * @return array<string, string>
+     */
+    public static function selectable(): array
+    {
+        return array_diff_key(self::options(), ['event' => true]);
     }
 
     /**

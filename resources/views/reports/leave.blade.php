@@ -8,28 +8,29 @@
     <h1 class="text-2xl font-semibold tracking-tight">Verlof- en verzuimrapportage {{ $year }}</h1>
     <form method="GET" class="flex flex-wrap items-center gap-2 text-sm" data-autosubmit>
         <select name="year" class="rounded-full border-0 bg-white px-4 py-2 shadow-sm ring-1 ring-inset ring-slate-300">@foreach (range(now()->year + 1, now()->year - 5) as $y)<option value="{{ $y }}" @selected($y === $year)>{{ $y }}</option>@endforeach</select>
+        <select name="unit" class="rounded-full border-0 bg-white px-4 py-2 shadow-sm ring-1 ring-inset ring-slate-300"><option value="hours" @selected($unit === 'hours')>Saldo in uren</option><option value="days" @selected($unit === 'days')>Saldo in dagen</option></select>
+        <select name="status" class="rounded-full border-0 bg-white px-4 py-2 shadow-sm ring-1 ring-inset ring-slate-300"><option value="active" @selected(request('status', 'active') === 'active')>In dienst</option><option value="all" @selected(request('status') === 'all')>Alle</option></select>
         <select name="team_id" class="rounded-full border-0 bg-white px-4 py-2 shadow-sm ring-1 ring-inset ring-slate-300"><option value="">Alle teams</option>@foreach ($teams as $id => $name)<option value="{{ $id }}" @selected((string) request('team_id') === (string) $id)>{{ $name }}</option>@endforeach</select>
         <a href="{{ route('reports.leave.export', request()->query()) }}" class="rounded-full bg-brand-700 px-4 py-2 font-semibold text-white hover:bg-brand-800">Exporteren naar Excel</a>
     </form>
 </div>
 <div class="grid shrink-0 grid-cols-3 gap-3">
-    <div class="rounded-2xl bg-white px-5 py-3 shadow-sm ring-1 ring-slate-200"><div class="text-2xl font-semibold">{{ $num($totals['taken']) }} u</div><div class="text-xs text-slate-500">Verlof opgenomen</div></div>
+    <div class="rounded-2xl bg-white px-5 py-3 shadow-sm ring-1 ring-slate-200"><div class="text-2xl font-semibold">{{ $num($totals['taken']) }} {{ $unit === 'days' ? 'd' : 'u' }}</div><div class="text-xs text-slate-500">Verlof opgenomen</div></div>
     <div class="rounded-2xl bg-white px-5 py-3 shadow-sm ring-1 ring-slate-200"><div class="text-2xl font-semibold">{{ $num($totals['absence_hours']) }} u</div><div class="text-xs text-slate-500">Verzuimuren</div></div>
     <div class="rounded-2xl bg-white px-5 py-3 shadow-sm ring-1 ring-slate-200"><div class="text-2xl font-semibold">{{ $totals['scheduled'] > 0 ? $num($totals['absence_hours'] / $totals['scheduled'] * 100) : 0 }}%</div><div class="text-xs text-slate-500">Verzuimpercentage</div></div>
 </div>
 <x-card flush class="lg:flex-1">
     <table class="min-w-full text-sm">
-        <thead class="sticky top-0 z-10 bg-brand-50 text-left text-xs font-semibold text-slate-700"><tr>
-            <th class="px-4 py-3">Medewerker</th><th class="px-4 py-3">Team</th><th class="px-4 py-3 text-right">Toegekend</th><th class="px-4 py-3 text-right">Opgenomen</th><th class="px-4 py-3 text-right">Saldo vakantie</th><th class="px-4 py-3 text-right">Saldo TvT</th><th class="px-4 py-3 text-right">Meldingen</th><th class="px-4 py-3 text-right">Verzuimuren</th><th class="px-4 py-3 text-right">Verzuim %</th></tr></thead>
+        <thead class="sticky top-0 z-10 bg-brand-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-700"><tr>
+            <th class="px-4 py-3">Medewerker</th><th class="px-4 py-3 text-right">Saldo begin jaar</th><th class="px-4 py-3 text-right">Toegekend</th><th class="px-4 py-3 text-right">Opgenomen</th><th class="px-4 py-3 text-right">Ingepland</th><th class="px-4 py-3 text-right">Saldo einde jaar</th><th class="px-4 py-3 text-right">Saldo TvT</th><th class="px-4 py-3 text-right">Meldingen</th><th class="px-4 py-3 text-right">Verzuimuren</th><th class="px-4 py-3 text-right">Verzuim %</th></tr></thead>
         <tbody class="divide-y divide-slate-100">
         @forelse ($rows as $row)
-            <tr><td class="px-4 py-2.5 font-medium"><a href="{{ route('employees.show', [$row['employee'], 'tab' => 'leave']) }}" class="hover:text-brand-700 hover:underline">{{ $row['employee']->full_name }}</a></td>
-                <td class="px-4 py-2.5">{{ $row['employee']->team?->name ?? '—' }}</td>
-                <td class="px-4 py-2.5 text-right">{{ $num($row['allocated']) }}</td><td class="px-4 py-2.5 text-right">{{ $num($row['taken']) }}</td>
-                <td class="px-4 py-2.5 text-right {{ $row['vacation_balance'] < 0 ? 'text-rose-600' : '' }}">{{ $num($row['vacation_balance']) }}</td><td class="px-4 py-2.5 text-right">{{ $num($row['tvt_balance']) }}</td>
+            <tr><td class="px-4 py-2.5 font-medium"><a href="{{ route('employees.show', [$row['employee'], 'tab' => 'leave']) }}" class="hover:text-brand-700 hover:underline">{{ $row['employee']->full_name }}</a><div class="text-xs font-normal text-slate-500">{{ $row['employee']->teams->pluck('name')->implode(', ') }}</div></td>
+                <td class="px-4 py-2.5 text-right">{{ $num($row['begin']) }}</td><td class="px-4 py-2.5 text-right">{{ $num($row['allocated']) }}</td><td class="px-4 py-2.5 text-right">{{ $num($row['taken']) }}</td><td class="px-4 py-2.5 text-right">{{ $num($row['planned']) }}</td>
+                <td class="px-4 py-2.5 text-right font-medium {{ $row['end'] < 0 ? 'text-rose-600' : '' }}">{{ $num($row['end']) }}</td><td class="px-4 py-2.5 text-right">{{ $num($row['tvt_balance']) }}</td>
                 <td class="px-4 py-2.5 text-right">{{ $row['absence_count'] }}</td><td class="px-4 py-2.5 text-right">{{ $num($row['absence_hours']) }}</td><td class="px-4 py-2.5 text-right">{{ $num($row['absence_percentage']) }}%</td></tr>
         @empty
-            <tr><td colspan="9" class="px-4 py-12 text-center text-slate-500">Geen medewerkers gevonden.</td></tr>
+            <tr><td colspan="10" class="px-4 py-12 text-center text-slate-500">Geen medewerkers gevonden.</td></tr>
         @endforelse
         </tbody>
     </table>

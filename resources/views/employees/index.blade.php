@@ -12,6 +12,15 @@
             </div>
         @endforeach
     </div>
+    @if ($demographics)
+        <div class="grid shrink-0 gap-4 md:grid-cols-3">
+            <div class="flex flex-col justify-center rounded-2xl bg-white px-5 py-4 shadow-sm ring-1 ring-slate-200">
+                <div class="text-xs text-slate-500">Gemiddelde leeftijd</div>
+                <div class="text-3xl font-semibold text-ink">{{ $demographics['average_age'] !== null ? $demographics['average_age'].' jaar' : '—' }}</div>
+            </div>
+            <x-donut title="Geslacht" :data="$demographics['gender']" />
+        </div>
+    @endif
     <div class="flex shrink-0 flex-wrap items-center justify-end gap-2 text-sm">
         <button type="button" data-toggle="filters" class="rounded-full bg-white px-4 py-2 font-medium text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 lg:hidden">Filters</button>
         @can('create', \App\Models\Employee::class)
@@ -19,6 +28,7 @@
             <summary class="cursor-pointer list-none rounded-full bg-white px-4 py-2 font-medium text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50">Opties</summary>
             <div class="absolute right-0 z-20 mt-2 w-56 rounded-lg bg-white p-1 shadow-lg ring-1 ring-slate-200">
                 <a href="{{ route('employees.import') }}" class="block rounded-md px-3 py-2 hover:bg-slate-100">Medewerkers importeren</a>
+                <a href="{{ route('employees.export', [...request()->query(), 'format' => 'csv']) }}" class="block rounded-md px-3 py-2 hover:bg-slate-100">Exporteren als CSV</a>
                 <a href="{{ route('employees.import.template') }}" class="block rounded-md px-3 py-2 hover:bg-slate-100">Importsjabloon downloaden</a>
             </div>
         </details>
@@ -46,12 +56,17 @@
                 @forelse ($employees as $employee)
                     <tr class="align-top hover:bg-slate-50">
                         <td class="px-4 py-3">
+                            <div class="flex items-start gap-3">
+                                @if ($employee->photo_path)<img src="{{ route('employees.photo', $employee) }}" alt="" class="size-9 rounded-full object-cover">@else<span class="grid size-9 shrink-0 place-items-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">{{ $employee->initials_label }}</span>@endif
+                                <div>
                             <a href="{{ route('employees.show', $employee) }}" class="font-medium text-slate-900 hover:text-brand-700 hover:underline">{{ $employee->full_name }}</a>
                             <div class="text-xs text-slate-500">{{ $employee->email }}</div>
                             @unless ($employee->is_employed)<div class="text-xs text-rose-600">Uit dienst{{ $employee->left_at ? ' per '.$employee->left_at->format('d-m-Y') : '' }}</div>@endunless
+                                </div>
+                            </div>
                         </td>
-                        <td class="px-4 py-3 text-slate-700">{{ $employee->job_title ?? '—' }}<div class="text-xs text-slate-500">{{ $employee->discipline?->name }}</div></td>
-                        <td class="px-4 py-3 text-slate-700">{{ $employee->team?->name ?? '—' }}</td>
+                        <td class="px-4 py-3 text-slate-700">{{ $employee->job_title ?? '—' }}<div class="text-xs text-slate-500">{{ $employee->disciplines->pluck('name')->implode(', ') }}</div></td>
+                        <td class="px-4 py-3 text-slate-700">{{ $employee->teams->pluck('name')->implode(', ') ?: '—' }}</td>
                         <td class="px-4 py-3 text-slate-700">{{ $employee->manager?->full_name ?? '—' }}</td>
                         <td class="px-4 py-3 text-slate-700">
                             @if ($employee->currentContract && auth()->user()->can('viewContracts', $employee))
@@ -77,6 +92,7 @@
         <input type="search" name="q" value="{{ request('q') }}" placeholder="Zoeken op naam, e-mail, functie…"
                class="mb-6 block w-full rounded-lg border-0 bg-white px-3 py-2 text-sm shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600">
         <x-filter-group title="Status" name="status" type="radio" :options="['active' => 'In dienst', 'upcoming' => 'Nog niet gestart', 'left' => 'Uit dienst', 'all' => 'Alle']" />
+        <x-filter-group title="Soort medewerker" name="employee_type" :options="$employeeTypes" />
         <x-filter-group title="Team" name="team_id" :options="$teams" />
         <x-filter-group title="Discipline" name="discipline_id" :options="$disciplines" />
         <x-filter-group title="Contractsoort" name="contract_type" :options="\App\Enums\ContractType::options()" />

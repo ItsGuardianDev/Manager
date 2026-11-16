@@ -34,6 +34,9 @@ class OrganizationPersonController extends Controller
             'is_primary' => $person->organizations()->doesntExist(),
         ]);
 
+        $organization->logEvent("Contactpersoon {$person->full_name} gekoppeld".(($data['job_title'] ?? null) ? " als {$data['job_title']}" : '').'.');
+        $person->logEvent("Gekoppeld als contactpersoon bij {$organization->name}.");
+
         return back()->with('status', "{$person->full_name} is gekoppeld aan {$organization->name}.");
     }
 
@@ -62,6 +65,8 @@ class OrganizationPersonController extends Controller
     public function destroy(Organization $organization, Person $person): RedirectResponse
     {
         $person->organizations()->detach($organization->id);
+        $organization->logEvent("Contactpersoon {$person->full_name} ontkoppeld.");
+        $person->logEvent("Ontkoppeld van {$organization->name}.");
 
         return back()->with('status', 'Koppeling verwijderd.');
     }

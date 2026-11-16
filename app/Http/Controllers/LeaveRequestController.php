@@ -34,7 +34,7 @@ class LeaveRequestController extends Controller
         $seesAll = $user->hasPermission(Permission::LeaveApprove) || $user->hasPermission(Permission::LeaveManage);
 
         $requests = LeaveRequest::query()
-            ->with(['employee.team', 'leaveType', 'decider'])
+            ->with(['employee.teams', 'leaveType', 'decider'])
             ->when(! $seesAll, fn (Builder $query) => $query->whereHas('employee', fn (Builder $query) => $query->where('manager_id', $user->employee?->id)))
             ->when($status !== 'all', fn (Builder $query) => $query->where('status', $status))
             ->orderBy($status === 'pending' ? 'start_date' : 'decided_at', $status === 'pending' ? 'asc' : 'desc')

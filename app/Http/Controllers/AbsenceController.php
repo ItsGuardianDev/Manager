@@ -21,7 +21,7 @@ class AbsenceController extends Controller
         $status = $request->query('status', 'ongoing');
 
         return view('absences.index', [
-            'absences' => Absence::with('employee.team')
+            'absences' => Absence::with('employee.teams')
                 ->when($status === 'ongoing', fn (Builder $query) => $query->whereNull('end_date'))
                 ->when($status === 'closed', fn (Builder $query) => $query->whereNotNull('end_date'))
                 ->orderByDesc('start_date')

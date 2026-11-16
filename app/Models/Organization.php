@@ -2,22 +2,23 @@
 
 namespace App\Models;
 
+use App\Enums\InvoiceAttention;
 use App\Enums\InvoiceDelivery;
 use App\Enums\OrganizationType;
+use App\Models\Concerns\HasTimeline;
 use Illuminate\Database\Eloquent\Attributes\Guarded;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 
 #[Guarded(['id', 'name_normalized'])]
 class Organization extends Model
 {
-    use HasFactory;
+    use HasFactory, HasTimeline;
 
     /**
      * Countries offered in the address dropdowns.
@@ -29,6 +30,26 @@ class Organization extends Model
         'Portugal', 'Italië', 'Oostenrijk', 'Zwitserland', 'Denemarken', 'Zweden', 'Noorwegen', 'Finland', 'Polen',
         'Verenigde Staten', 'Canada',
     ];
+
+    /**
+     * @var array<int, string>
+     */
+    public const PAYMENT_TERMS = [0 => 'Direct', 7 => '7 dagen', 14 => '14 dagen', 30 => '30 dagen', 45 => '45 dagen', 60 => '60 dagen', 90 => '90 dagen'];
+
+    /**
+     * @var array<string, string>
+     */
+    public const VAT_CODES = ['vat_21' => 'BTW hoog (21%)', 'vat_9' => 'BTW laag (9%)', 'vat_0' => 'BTW 0%', 'reverse_charge' => 'BTW verlegd'];
+
+    /**
+     * @var array<string, string>
+     */
+    public const REMINDER_PLANS = ['default' => 'Algemene voorkeursinstelling gebruiken', 'none' => 'Geen herinneringen', 'friendly' => 'Vriendelijke herinneringen', 'strict' => 'Strikte herinneringen'];
+
+    /**
+     * @var array<string, string>
+     */
+    public const INVOICE_TEMPLATES = ['standard' => 'Standaard', 'detailed' => 'Gespecificeerd', 'compact' => 'Compact'];
 
     public function hasDifferentPostalAddress(): bool
     {
@@ -50,6 +71,8 @@ class Organization extends Model
         return [
             'type' => OrganizationType::class,
             'invoice_delivery' => InvoiceDelivery::class,
+            'invoice_attention' => InvoiceAttention::class,
+            'is_vat_exempt' => 'boolean',
             'is_active' => 'boolean',
             'payment_term_days' => 'integer',
         ];
@@ -89,9 +112,19 @@ class Organization extends Model
             ->withTimestamps();
     }
 
-    public function notes(): MorphMany
+    public function team(): BelongsTo
     {
-        return $this->morphMany(Note::class, 'noteable')->latest();
+        return $this->belongsTo(Team::class);
+    }
+
+    public function customerGroup(): BelongsTo
+    {
+        return $this->belongsTo(CustomerGroup::class);
+    }
+
+    public function invoiceContactPerson(): BelongsTo
+    {
+        return $this->belongsTo(Person::class, 'invoice_contact_person_id');
     }
 
     /**
@@ -118,6 +151,9 @@ class Organization extends Model
             ->when(Arr::wrap($filters['industry_id'] ?? []), fn (Builder $query, array $values) => $query->whereIn('industry_id', $values))
             ->when(Arr::wrap($filters['company_size_id'] ?? []), fn (Builder $query, array $values) => $query->whereIn('company_size_id', $values))
             ->when(Arr::wrap($filters['relation_manager_id'] ?? []), fn (Builder $query, array $values) => $query->whereIn('relation_manager_id', $values))
+            ->when(Arr::wrap($filters['team_id'] ?? []), fn (Builder $query, array $values) => $query->whereIn('team_id', $values))
+            ->when(Arr::wrap($filters['customer_group_id'] ?? []), fn (Builder $query, array $values) => $query->whereIn('customer_group_id', $values))
+            ->when(Arr::wrap($filters['visit_country'] ?? []), fn (Builder $query, array $values) => $query->whereIn('visit_country', $values))
             ->when(Arr::wrap($filters['invoice_delivery'] ?? []), fn (Builder $query, array $values) => $query->whereIn('invoice_delivery', $values))
             ->when(! empty($filters['created_from']), fn (Builder $query) => $query->whereDate('created_at', '>=', $filters['created_from']))
             ->when(! empty($filters['created_to']), fn (Builder $query) => $query->whereDate('created_at', '<=', $filters['created_to']))

@@ -17,6 +17,10 @@ class PersonRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge(['is_active' => $this->boolean('is_active', true)]);
+
+        if (! $this->boolean('use_salutation')) {
+            $this->merge(['salutation' => null]);
+        }
     }
 
     /**
@@ -53,6 +57,13 @@ class PersonRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:50'],
             'mobile' => ['nullable', 'string', 'max:50'],
             'linkedin_url' => ['nullable', 'string', 'max:255'],
+            'twitter_url' => ['nullable', 'string', 'max:255'],
+            'facebook_url' => ['nullable', 'string', 'max:255'],
+            'salutation' => ['nullable', 'string', 'max:100'],
+            'use_salutation' => ['nullable', 'boolean'],
+            'team_id' => ['nullable', 'exists:teams,id'],
+            'relation_manager_id' => ['nullable', 'exists:users,id'],
+            'note' => ['nullable', 'string', 'max:5000'],
             'street' => ['nullable', 'string', 'max:255'],
             'zipcode' => ['nullable', 'string', 'max:20'],
             'city' => ['nullable', 'string', 'max:255'],

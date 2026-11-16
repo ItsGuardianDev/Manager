@@ -6,6 +6,7 @@ use App\Models\Employee;
 use App\Models\WorkSchedule;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
@@ -17,12 +18,14 @@ class WorkScheduleController extends Controller
 
         $data = $request->validate([
             'effective_from' => ['required', 'date'],
+            'cost_rate' => ['required', 'numeric', 'min:0', 'max:9999'],
+            'sales_rate' => ['required', 'numeric', 'min:0', 'max:9999'],
             'alternating' => ['nullable', 'boolean'],
             'days' => ['required', 'array'],
             'days.*.*.start' => ['nullable', 'date_format:H:i'],
             'days.*.*.end' => ['nullable', 'date_format:H:i'],
             'days.*.*.break' => ['nullable', 'integer', 'between:0,480'],
-        ], [], ['effective_from' => 'ingangsdatum']);
+        ], [], ['effective_from' => 'begindatum', 'cost_rate' => 'kostprijs', 'sales_rate' => 'verkooptarief']);
 
         $alternating = $request->boolean('alternating');
         $pattern = ['odd' => $this->cleanWeek($data['days']['odd'] ?? [])];
@@ -31,14 +34,16 @@ class WorkScheduleController extends Controller
             $pattern['even'] = $this->cleanWeek($data['days']['even'] ?? []);
         }
 
-        if (WorkSchedule::dayHours(null) === 0.0 && array_sum(array_map(fn ($week) => count($week), $pattern)) === 0) {
+        if (array_sum(array_map(fn ($week) => count($week), $pattern)) === 0) {
             throw ValidationException::withMessages(['days' => 'Vul minimaal één werkdag in.']);
         }
 
         $employee->schedules()->updateOrCreate(
             ['effective_from' => $data['effective_from']],
-            ['alternating' => $alternating, 'pattern' => $pattern],
+            ['alternating' => $alternating, 'pattern' => $pattern, 'cost_rate' => $data['cost_rate'], 'sales_rate' => $data['sales_rate']],
         );
+
+        $employee->logEvent('Rooster per '.Carbon::parse($data['effective_from'])->format('d-m-Y').' opgeslagen met een verkooptarief van € '.number_format((float) $data['sales_rate'], 2, ',', '.').' en een kostprijs van € '.number_format((float) $data['cost_rate'], 2, ',', '.').'.');
 
         return redirect()->route('employees.show', [$employee, 'tab' => 'schedule'])->with('status', 'Rooster opgeslagen.');
     }

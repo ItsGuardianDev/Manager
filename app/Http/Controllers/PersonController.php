@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Http\Requests\PersonRequest;
 use App\Models\Organization;
 use App\Models\Person;
+use App\Models\Team;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -17,7 +19,7 @@ class PersonController extends Controller
         $direction = $request->query('dir') === 'desc' ? 'desc' : 'asc';
 
         $people = Person::query()
-            ->with(['organizations' => fn ($query) => $query->orderByDesc('organization_person.is_primary')->orderBy('name')])
+            ->with(['employee', 'organizations' => fn ($query) => $query->orderByDesc('organization_person.is_primary')->orderBy('name')])
             ->filter($request->query())
             ->orderBy($sort, $direction)
             ->orderBy('first_name')
@@ -39,12 +41,18 @@ class PersonController extends Controller
             'organizations' => Organization::where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'preselectedOrganizationId' => $request->query('organization_id'),
             'duplicate' => null,
+            ...$this->lookups(),
         ]);
     }
 
     public function store(PersonRequest $request): RedirectResponse
     {
-        $person = Person::create($request->safe()->except(['organization_id', 'job_title', 'confirm_duplicate']));
+        $person = Person::create($request->safe()->except(['organization_id', 'job_title', 'confirm_duplicate', 'note', 'use_salutation']));
+        $person->logEvent('Persoon aangemaakt door '.$request->user()->name.'.');
+
+        if ($request->filled('note')) {
+            $person->notes()->create(['body' => $request->input('note'), 'user_id' => $request->user()->id]);
+        }
 
         if ($request->filled('organization_id')) {
             $person->organizations()->attach($request->integer('organization_id'), [
@@ -56,12 +64,13 @@ class PersonController extends Controller
         return redirect()->route('people.show', $person)->with('status', 'Persoon aangemaakt.');
     }
 
-    public function show(Person $person): View
+    public function show(Person $person, Request $request): View
     {
-        $person->load(['organizations' => fn ($query) => $query->with('industry'), 'notes.author']);
+        $person->load(['organizations' => fn ($query) => $query->with('industry'), 'notes.author', 'documents.uploader', 'team', 'relationManager', 'employee']);
 
         return view('people.show', [
             'person' => $person,
+            'tab' => $request->query('tab'),
             'availableOrganizations' => Organization::query()
                 ->where('is_active', true)
                 ->whereNotIn('id', $person->organizations->modelKeys())
@@ -76,12 +85,14 @@ class PersonController extends Controller
             'organizations' => collect(),
             'preselectedOrganizationId' => null,
             'duplicate' => null,
+            ...$this->lookups(),
         ]);
     }
 
     public function update(PersonRequest $request, Person $person): RedirectResponse
     {
-        $person->update($request->safe()->except(['organization_id', 'job_title', 'confirm_duplicate']));
+        $person->update($request->safe()->except(['organization_id', 'job_title', 'confirm_duplicate', 'note', 'use_salutation']));
+        $person->logEvent('Persoonsgegevens gewijzigd door '.$request->user()->name.'.');
 
         return redirect()->route('people.show', $person)->with('status', 'Persoon bijgewerkt.');
     }
@@ -92,7 +103,19 @@ class PersonController extends Controller
     public function toggleActive(Person $person): RedirectResponse
     {
         $person->update(['is_active' => ! $person->is_active]);
+        $person->logEvent($person->is_active ? 'Persoon geactiveerd.' : 'Persoon gedeactiveerd.');
 
         return back()->with('status', $person->is_active ? 'Persoon geactiveerd.' : 'Persoon gedeactiveerd.');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function lookups(): array
+    {
+        return [
+            'teams' => Team::orderBy('name')->pluck('name', 'id'),
+            'managers' => User::where('is_active', true)->orderBy('name')->pluck('name', 'id'),
+        ];
     }
 }

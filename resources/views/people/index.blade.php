@@ -9,10 +9,11 @@
             <summary class="cursor-pointer list-none rounded-full bg-white px-4 py-2 font-medium text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50">Opties</summary>
             <div class="absolute right-0 z-20 mt-2 w-52 rounded-lg bg-white p-1 shadow-lg ring-1 ring-slate-200">
                 <a href="{{ route('people.import') }}" class="block rounded-md px-3 py-2 hover:bg-slate-100">Personen importeren</a>
+                <a href="{{ route('people.export', [...request()->query(), 'format' => 'csv']) }}" class="block rounded-md px-3 py-2 hover:bg-slate-100">Exporteren als CSV</a>
                 <a href="{{ route('people.import.template') }}" class="block rounded-md px-3 py-2 hover:bg-slate-100">Importsjabloon downloaden</a>
             </div>
         </details>
-        <a href="{{ route('people.export', request()->query()) }}" class="rounded-full bg-white px-4 py-2 font-medium text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50">Exporteren</a>
+        <a href="{{ route('people.export', request()->query()) }}" class="rounded-full bg-white px-4 py-2 font-medium text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50">Exporteren naar Excel</a>
         <a href="{{ route('people.create') }}" class="rounded-full bg-brand-700 px-4 py-2 font-semibold text-white hover:bg-brand-800">+ Nieuw</a>
     </div>
 
@@ -32,11 +33,12 @@
                     <tr class="align-top hover:bg-slate-50">
                         <td class="px-4 py-3">
                             <a href="{{ route('people.show', $person) }}" class="font-medium text-slate-900 hover:text-brand-700 hover:underline">{{ $person->full_name }}</a>
+                            @if ($person->employee)<span class="ml-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-700">Medewerker</span>@endif
                             @unless ($person->is_active)<div class="text-xs text-slate-500">(inactief)</div>@endunless
                         </td>
                         <td class="px-4 py-3 text-slate-700">
                             @forelse ($person->organizations as $organization)
-                                <div><a href="{{ route('organizations.show', $organization) }}" class="text-brand-700 hover:underline">{{ $organization->name }}</a>@if ($organization->pivot->job_title)<span class="text-slate-500"> · {{ $organization->pivot->job_title }}</span>@endif</div>
+                                <div>@if ($organization->pivot->job_title){{ $organization->pivot->job_title }} @endif<a href="{{ route('organizations.show', $organization) }}" class="text-brand-700 hover:underline">@ {{ $organization->name }}</a></div>
                             @empty <span class="text-slate-400">—</span> @endforelse
                         </td>
                         <td class="px-4 py-3 text-brand-700">
@@ -66,6 +68,7 @@
                 <input type="date" name="created_to" value="{{ request('created_to') }}" class="min-w-0 flex-1 rounded-lg border-0 bg-white px-2 py-1.5 text-xs shadow-sm ring-1 ring-inset ring-slate-300">
             </div>
         </fieldset>
+        <x-filter-group title="Soort persoon" name="kind" type="radio" default="all" :options="['all' => 'Alle', 'contact' => 'Contactpersoon', 'employee' => 'Medewerker']" />
         <x-filter-group title="Status" name="status" type="radio" :options="['active' => 'Actief', 'inactive' => 'Inactief', 'all' => 'Alle']" />
         <div class="max-h-96 overflow-y-auto">
             <x-filter-group title="Bedrijf" name="organization_id" :options="$organizations->pluck('name', 'id')" />

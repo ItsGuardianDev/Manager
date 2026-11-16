@@ -21,7 +21,7 @@
             <tbody class="divide-y divide-slate-100">
             @forelse ($requests as $leaveRequest)
                 <tr class="align-top">
-                    <td class="px-4 py-3"><a href="{{ route('employees.show', [$leaveRequest->employee, 'tab' => 'leave']) }}" class="font-medium hover:text-brand-700 hover:underline">{{ $leaveRequest->employee->full_name }}</a><div class="text-xs text-slate-500">{{ $leaveRequest->employee->team?->name }}</div></td>
+                    <td class="px-4 py-3"><a href="{{ route('employees.show', [$leaveRequest->employee, 'tab' => 'leave']) }}" class="font-medium hover:text-brand-700 hover:underline">{{ $leaveRequest->employee->full_name }}</a><div class="text-xs text-slate-500">{{ $leaveRequest->employee->teams->pluck('name')->implode(', ') }}</div></td>
                     <td class="whitespace-nowrap px-4 py-3">{{ $leaveRequest->start_date->format('d-m-Y') }} – {{ $leaveRequest->end_date->format('d-m-Y') }}@if ($leaveRequest->note)<div class="text-xs text-slate-500">{{ $leaveRequest->note }}</div>@endif</td>
                     <td class="px-4 py-3">{{ $leaveRequest->leaveType->name }}</td>
                     <td class="px-4 py-3">{{ rtrim(rtrim(number_format($leaveRequest->hours, 2, ',', ''), '0'), ',') }}</td>

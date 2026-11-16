@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Enums\OrganizationType;
 use App\Http\Requests\OrganizationRequest;
 use App\Models\CompanySize;
+use App\Models\CustomerGroup;
 use App\Models\Industry;
 use App\Models\Organization;
 use App\Models\Person;
+use App\Models\Team;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -37,6 +39,9 @@ class OrganizationController extends Controller
             'sort' => $sort,
             'direction' => $direction,
             'charts' => $this->charts($filters),
+            'selectedCharts' => $request->user()->preferences['organization_charts'] ?? PreferenceController::DEFAULT_CHARTS,
+            'chartOptions' => PreferenceController::ORGANIZATION_CHARTS,
+            'countries' => Organization::whereNotNull('visit_country')->distinct()->orderBy('visit_country')->pluck('visit_country', 'visit_country'),
             ...$this->lookups(),
         ]);
     }
@@ -51,7 +56,8 @@ class OrganizationController extends Controller
 
     public function store(OrganizationRequest $request): RedirectResponse
     {
-        $organization = Organization::create($request->safe()->except(['note', 'postal_differs']));
+        $organization = Organization::create($request->safe()->except(['note', 'postal_differs', 'use_reminder_email']));
+        $organization->logEvent('Bedrijf aangemaakt door '.$request->user()->name.'.');
 
         if ($request->filled('note')) {
             $organization->notes()->create(['body' => $request->input('note'), 'user_id' => $request->user()->id]);
@@ -60,12 +66,13 @@ class OrganizationController extends Controller
         return redirect()->route('organizations.show', $organization)->with('status', 'Bedrijf aangemaakt.');
     }
 
-    public function show(Organization $organization): View
+    public function show(Organization $organization, Request $request): View
     {
-        $organization->load(['industry', 'companySize', 'relationManager', 'notes.author', 'people']);
+        $organization->load(['industry', 'companySize', 'relationManager', 'team', 'customerGroup', 'invoiceContactPerson', 'notes.author', 'documents.uploader', 'people']);
 
         return view('organizations.show', [
             'organization' => $organization,
+            'tab' => $request->query('tab'),
             'availablePeople' => Person::query()
                 ->where('is_active', true)
                 ->whereNotIn('id', $organization->people->modelKeys())
@@ -81,7 +88,8 @@ class OrganizationController extends Controller
 
     public function update(OrganizationRequest $request, Organization $organization): RedirectResponse
     {
-        $organization->update($request->safe()->except(['note', 'postal_differs']));
+        $organization->update($request->safe()->except(['note', 'postal_differs', 'use_reminder_email']));
+        $organization->logEvent('Bedrijfsgegevens gewijzigd door '.$request->user()->name.'.');
 
         return redirect()->route('organizations.show', $organization)->with('status', 'Bedrijf bijgewerkt.');
     }
@@ -92,6 +100,7 @@ class OrganizationController extends Controller
     public function toggleActive(Organization $organization): RedirectResponse
     {
         $organization->update(['is_active' => ! $organization->is_active]);
+        $organization->logEvent($organization->is_active ? 'Bedrijf geactiveerd.' : 'Bedrijf gedeactiveerd.');
 
         return back()->with('status', $organization->is_active ? 'Bedrijf geactiveerd.' : 'Bedrijf gedeactiveerd.');
     }
@@ -100,7 +109,7 @@ class OrganizationController extends Controller
      * Distribution of the currently filtered companies, for the donut charts.
      *
      * @param  array<string, mixed>  $filters
-     * @return array{type: array<string, int>, industry: array<string, int>, size: array<string, int>}
+     * @return array<string, array<string, int>>
      */
     private function charts(array $filters): array
     {
@@ -109,6 +118,8 @@ class OrganizationController extends Controller
 
         return [
             'type' => $count('type')->mapWithKeys(fn ($total, $type) => [OrganizationType::from($type)->label() => $total])->all(),
+            'relation_manager' => $count('relation_manager_id')->mapWithKeys(fn ($total, $id) => [User::find($id)?->name ?? 'Onbekend' => $total])->all(),
+            'country' => $count('visit_country')->mapWithKeys(fn ($total, $country) => [$country ?: 'Onbekend' => $total])->all(),
             'industry' => $count('industry_id')->mapWithKeys(fn ($total, $id) => [Industry::find($id)?->name ?? 'Onbekend' => $total])->all(),
             'size' => $count('company_size_id')->mapWithKeys(fn ($total, $id) => [CompanySize::find($id)?->name ?? 'Onbekend' => $total])->all(),
         ];
@@ -124,6 +135,9 @@ class OrganizationController extends Controller
             'industries' => Industry::orderBy('name')->get(),
             'sizes' => CompanySize::orderBy('sort_order')->get(),
             'employees' => User::where('is_active', true)->orderBy('name')->get(),
+            'teams' => Team::orderBy('name')->pluck('name', 'id'),
+            'customerGroups' => CustomerGroup::orderBy('name')->pluck('name', 'id'),
+            'contactPeople' => Person::where('is_active', true)->orderBy('last_name')->orderBy('first_name')->get()->pluck('full_name', 'id'),
         ];
     }
 }

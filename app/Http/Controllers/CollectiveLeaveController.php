@@ -43,7 +43,7 @@ class CollectiveLeaveController extends Controller
         ], [], ['name' => 'naam', 'leave_type_id' => 'verlofsoort', 'start_date' => 'startdatum', 'end_date' => 'einddatum']);
 
         $employees = Employee::employed()
-            ->when($data['scope'] === 'teams', fn ($query) => $query->whereIn('team_id', $data['team_ids'] ?? []))
+            ->when($data['scope'] === 'teams', fn ($query) => $query->whereHas('teams', fn ($query) => $query->whereIn('teams.id', $data['team_ids'] ?? [])))
             ->when($data['scope'] === 'employees', fn ($query) => $query->whereIn('id', $data['employee_ids'] ?? []))
             ->get();
 

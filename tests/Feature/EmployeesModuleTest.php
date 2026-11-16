@@ -16,6 +16,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Tests\TestCase;
 
 class EmployeesModuleTest extends TestCase
@@ -146,11 +147,11 @@ class EmployeesModuleTest extends TestCase
         $day = ['start' => '09:00', 'end' => '17:30', 'break' => 30];
 
         $this->actingAs($this->admin())->post(route('employees.schedules.store', $employee), [
-            'effective_from' => '2025-01-01', 'alternating' => 1,
+            'effective_from' => '2025-01-01', 'alternating' => 1, 'cost_rate' => 50, 'sales_rate' => 100,
             'days' => ['odd' => [1 => $day, 2 => $day], 'even' => [3 => $day, 4 => $day, 5 => $day]],
         ])->assertSessionHasNoErrors();
         $this->actingAs($this->admin())->post(route('employees.schedules.store', $employee), [
-            'effective_from' => '2030-01-01', 'days' => ['odd' => [1 => $day]],
+            'effective_from' => '2030-01-01', 'cost_rate' => 60, 'sales_rate' => 120, 'days' => ['odd' => [1 => $day]],
         ])->assertSessionHasNoErrors();
 
         $employee->load('schedules');
@@ -164,17 +165,21 @@ class EmployeesModuleTest extends TestCase
         $this->assertSame(8.0, $employee->scheduleOn(now()->setDate(2031, 1, 1))->weeklyHours('odd'));
     }
 
-    public function test_rates_apply_from_their_effective_date(): void
+    public function test_schedule_carries_rates_and_ends_when_the_next_one_starts(): void
     {
         $employee = Employee::factory()->create();
         $admin = $this->admin();
+        $day = ['start' => '09:00', 'end' => '17:00', 'break' => 0];
 
-        $this->actingAs($admin)->post(route('employees.rates.store', $employee), ['effective_from' => '2025-01-01', 'cost_rate' => 50, 'sales_rate' => 100]);
-        $this->actingAs($admin)->post(route('employees.rates.store', $employee), ['effective_from' => '2999-01-01', 'cost_rate' => 60, 'sales_rate' => 120]);
-        $employee->load('rates');
+        $this->actingAs($admin)->post(route('employees.schedules.store', $employee), ['effective_from' => '2025-01-01', 'cost_rate' => 50, 'sales_rate' => 100, 'days' => ['odd' => [1 => $day]]])->assertSessionHasNoErrors();
+        $this->actingAs($admin)->post(route('employees.schedules.store', $employee), ['effective_from' => '2999-01-01', 'cost_rate' => 60, 'sales_rate' => 120, 'days' => ['odd' => [1 => $day]]]);
+        $this->actingAs($admin)->post(route('employees.schedules.store', $employee), ['effective_from' => '2025-06-01', 'sales_rate' => 1, 'days' => ['odd' => [1 => $day]]])->assertSessionHasErrors('cost_rate');
+        $employee->load('schedules');
 
-        $this->assertSame('100.00', $employee->rateOn(today())->sales_rate);
-        $this->assertSame('120.00', $employee->rateOn(now()->setYear(3000))->sales_rate);
+        $this->assertSame('100.00', $employee->scheduleOn(today())->sales_rate);
+        $this->assertSame('120.00', $employee->scheduleOn(now()->setYear(3000))->sales_rate);
+        $this->assertSame('2998-12-31', $employee->scheduleEnd($employee->scheduleOn(today()))->format('Y-m-d'));
+        $this->assertNull($employee->scheduleEnd($employee->scheduleOn(now()->setYear(3000))));
     }
 
     public function test_leave_request_is_approved_by_manager_and_booked_on_the_balance(): void
@@ -240,9 +245,11 @@ class EmployeesModuleTest extends TestCase
     public function test_collective_leave_books_hours_for_a_team_only(): void
     {
         $team = Team::factory()->create();
-        $inTeam = Employee::factory()->create(['team_id' => $team->id]);
+        $inTeam = Employee::factory()->create();
+        $inTeam->teams()->attach($team);
         $outside = Employee::factory()->create();
-        $noSchedule = Employee::factory()->create(['team_id' => $team->id]);
+        $noSchedule = Employee::factory()->create();
+        $noSchedule->teams()->attach($team);
         $this->weekdaySchedule($inTeam);
         $this->weekdaySchedule($outside);
         $type = LeaveType::where('name', 'Collectieve vrije dag')->firstOrFail();
@@ -289,10 +296,10 @@ class EmployeesModuleTest extends TestCase
         $document = $employee->documents()->firstOrFail();
         Storage::disk('local')->assertExists($document->path);
 
-        $this->actingAs($admin)->get(route('employees.documents.show', [$employee, $document]))->assertOk();
-        $this->actingAs($this->userWith([Permission::EmployeesView]))->get(route('employees.documents.show', [$employee, $document]))->assertForbidden();
+        $this->actingAs($admin)->get(route('documents.show', $document))->assertOk();
+        $this->actingAs($this->userWith([Permission::EmployeesView]))->get(route('documents.show', $document))->assertForbidden();
 
-        $this->actingAs($admin)->delete(route('employees.documents.destroy', [$employee, $document]));
+        $this->actingAs($admin)->delete(route('documents.destroy', $document));
         Storage::disk('local')->assertMissing($document->path);
     }
 
@@ -328,7 +335,7 @@ class EmployeesModuleTest extends TestCase
         $admin = $this->admin();
         Employee::factory()->create(['first_name' => 'Jan', 'last_name' => 'Jansen', 'email' => 'jan@bedrijf.nl']);
 
-        $this->assertStringContainsString('jan@bedrijf.nl', $this->actingAs($admin)->get(route('employees.export'))->streamedContent());
+        $this->assertStringContainsString('jan@bedrijf.nl', $this->actingAs($admin)->get(route('employees.export', ['format' => 'csv']))->streamedContent());
         $this->assertStringContainsString('employee_number', $this->actingAs($admin)->get(route('employees.import.template'))->streamedContent());
 
         $csv = "first_name;last_name;email;team;manager_email;hired_at;contract_type;employment_type;hours_per_week\n"
@@ -341,7 +348,7 @@ class EmployeesModuleTest extends TestCase
             ->assertSessionHas('import_result', fn (array $result) => $result['created'] === 1 && count($result['skipped']) === 1 && count($result['errors']) === 1);
 
         $piet = Employee::where('email', 'piet@bedrijf.nl')->firstOrFail();
-        $this->assertSame('Sales', $piet->team->name);
+        $this->assertSame('Sales', $piet->teams->first()->name);
         $this->assertSame('jan@bedrijf.nl', $piet->manager->email);
         $this->assertSame('part_time', $piet->currentContract->employment_type->value);
     }
@@ -355,7 +362,7 @@ class EmployeesModuleTest extends TestCase
         $admin = $this->admin();
 
         $this->actingAs($admin)->get(route('reports.leave', ['year' => 2029]))->assertOk()->assertSee($employee->full_name)->assertSee('200');
-        $this->assertStringContainsString($employee->full_name, $this->actingAs($admin)->get(route('reports.leave.export', ['year' => 2029]))->streamedContent());
+        $this->assertStringContainsString($employee->full_name, $this->actingAs($admin)->get(route('reports.leave.export', ['year' => 2029, 'format' => 'csv']))->streamedContent());
         $this->actingAs($this->userWith([Permission::EmployeesView]))->get(route('reports.leave'))->assertForbidden();
     }
 
@@ -376,12 +383,46 @@ class EmployeesModuleTest extends TestCase
     public function test_pages_render(): void
     {
         $admin = $this->admin();
-        $employee = Employee::factory()->create(['team_id' => Team::factory()->create()->id]);
+        $employee = Employee::factory()->create();
+        $employee->teams()->attach(Team::factory()->create());
 
         foreach ([route('employees.index'), route('employees.create'), route('employees.edit', $employee), route('employees.show', $employee),
             route('employees.import'), route('leave-requests.index'), route('collective-leave.index'), route('absences.index'),
             route('reports.leave'), route('teams.index'), route('disciplines.index'), route('user-groups.index')] as $url) {
             $this->actingAs($admin)->get($url)->assertOk();
         }
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function sheetNames(BinaryFileResponse $response): array
+    {
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($response->getFile()->getPathname()));
+        preg_match_all('/<sheet name="([^"]+)"/', $zip->getFromName('xl/workbook.xml'), $matches);
+
+        return $matches[1];
+    }
+
+    public function test_employee_export_is_a_workbook_whose_tabs_follow_permissions(): void
+    {
+        $employee = Employee::factory()->create(['bsn' => '111222333']);
+        $employee->contracts()->create(['contract_type' => 'indefinite', 'employment_type' => 'full_time', 'start_date' => '2024-01-01', 'hours_per_week' => 40]);
+        $this->weekdaySchedule($employee);
+
+        $full = $this->actingAs($this->admin())->get(route('employees.export'))->assertOk();
+        $this->assertSame(['Medewerkers', 'Contracten', 'Roosters', 'Verlofaanvragen', 'Verlofsaldo', 'Verzuim', 'Tijdlijn'], $this->sheetNames($full->baseResponse));
+
+        $zip = new \ZipArchive;
+        $zip->open($full->baseResponse->getFile()->getPathname());
+        $this->assertStringContainsString('Onbepaalde tijd', $zip->getFromName('xl/worksheets/sheet2.xml'));
+        $this->assertStringContainsString('<v>40</v>', $zip->getFromName('xl/worksheets/sheet3.xml'));
+
+        $limited = $this->actingAs($this->userWith([Permission::EmployeesView]))->get(route('employees.export'))->assertOk();
+        $this->assertSame(['Medewerkers'], $this->sheetNames($limited->baseResponse));
+
+        $report = $this->actingAs($this->admin())->get(route('reports.leave.export'))->assertOk();
+        $this->assertSame(['Verlof en verzuim '.now()->year, 'Verzuimmeldingen'], $this->sheetNames($report->baseResponse));
     }
 }

@@ -2,20 +2,22 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasTimeline;
 use Illuminate\Database\Eloquent\Attributes\Guarded;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 
 #[Guarded(['id', 'full_name_normalized'])]
 class Person extends Model
 {
-    use HasFactory;
+    use HasFactory, HasTimeline;
 
     protected $table = 'people';
 
@@ -69,9 +71,19 @@ class Person extends Model
             ->withTimestamps();
     }
 
-    public function notes(): MorphMany
+    public function team(): BelongsTo
     {
-        return $this->morphMany(Note::class, 'noteable')->latest();
+        return $this->belongsTo(Team::class);
+    }
+
+    public function relationManager(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'relation_manager_id');
+    }
+
+    public function employee(): HasOne
+    {
+        return $this->hasOne(Employee::class);
     }
 
     /**
@@ -96,6 +108,8 @@ class Person extends Model
             ->when(Arr::wrap($filters['organization_id'] ?? []), fn (Builder $query, array $ids) => $query->whereHas(
                 'organizations', fn (Builder $query) => $query->whereIn('organizations.id', $ids)
             ))
+            ->when(($filters['kind'] ?? 'all') === 'employee', fn (Builder $query) => $query->whereHas('employee'))
+            ->when(($filters['kind'] ?? 'all') === 'contact', fn (Builder $query) => $query->whereHas('organizations'))
             ->when(! empty($filters['created_from']), fn (Builder $query) => $query->whereDate('created_at', '>=', $filters['created_from']))
             ->when(! empty($filters['created_to']), fn (Builder $query) => $query->whereDate('created_at', '<=', $filters['created_to']))
             ->when(($filters['status'] ?? 'active') === 'active', fn (Builder $query) => $query->where('is_active', true))

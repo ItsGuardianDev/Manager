@@ -3,34 +3,31 @@
 namespace App\Http\Controllers;
 
 use App\Enums\BalanceKind;
-use App\Enums\LedgerReason;
 use App\Http\Controllers\Concerns\HandlesCsv;
 use App\Models\Employee;
 use App\Models\Team;
+use App\Services\XlsxWriter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LeaveReportController extends Controller
 {
     use HandlesCsv;
 
-    private const HEADERS = [
-        'Personeelsnummer', 'Medewerker', 'Team', 'Vakantie toegekend', 'Vakantie opgenomen', 'Saldo vakantie',
-        'Saldo tijd-voor-tijd', 'Verzuimmeldingen', 'Verzuimuren', 'Verzuimpercentage',
-    ];
-
     public function index(Request $request): View
     {
         Gate::authorize('reports.view');
 
-        [$year, $rows] = $this->build($request);
+        [$year, $unit, $rows] = $this->build($request);
 
         return view('reports.leave', [
             'year' => $year,
+            'unit' => $unit,
             'rows' => $rows,
             'teams' => Team::orderBy('name')->pluck('name', 'id'),
             'totals' => [
@@ -38,47 +35,65 @@ class LeaveReportController extends Controller
                 'absence_hours' => $rows->sum('absence_hours'),
                 'scheduled' => $rows->sum('scheduled'),
             ],
-            'headers' => self::HEADERS,
         ]);
     }
 
-    public function export(Request $request): StreamedResponse
+    public function export(Request $request): StreamedResponse|BinaryFileResponse
     {
         Gate::authorize('reports.view');
 
-        [$year, $rows] = $this->build($request);
+        [$year, $unit, $rows] = $this->build($request);
+        $label = $unit === 'days' ? 'dagen' : 'uren';
+        $headers = ['Personeelsnummer', 'Medewerker', 'Teams', "Saldo begin jaar ({$label})", "Toegekend ({$label})", "Opgenomen ({$label})", "Ingepland ({$label})",
+            "Saldo einde jaar ({$label})", 'Saldo tijd-voor-tijd (uren)', 'Verzuimmeldingen', 'Verzuimuren', 'Verzuimpercentage'];
 
-        return $this->streamCsv("verlof-verzuim-{$year}.csv", self::HEADERS, $rows->map(fn (array $row) => [
-            $row['employee']->employee_number, $row['employee']->full_name, $row['employee']->team?->name,
-            $row['allocated'], $row['taken'], $row['vacation_balance'], $row['tvt_balance'],
-            $row['absence_count'], $row['absence_hours'], $row['absence_percentage'].'%',
+        $data = $rows->map(fn (array $row) => [
+            $row['employee']->employee_number, $row['employee']->full_name, $row['employee']->teams->pluck('name')->implode(', '),
+            $row['begin'], $row['allocated'], $row['taken'], $row['planned'], $row['end'], $row['tvt_balance'],
+            $row['absence_count'], $row['absence_hours'], $row['absence_percentage'],
+        ]);
+
+        if ($request->query('format') === 'csv') {
+            return $this->streamCsv("verlof-verzuim-{$year}.csv", $headers, $data);
+        }
+
+        $detail = $rows->flatMap(fn (array $row) => $row['employee']->absences->map(fn ($absence) => [
+            $row['employee']->full_name, $absence->type->label(), $absence->start_date, $absence->end_date, $absence->percentage, $absence->note,
         ]));
+
+        return XlsxWriter::make()
+            ->sheet("Verlof en verzuim {$year}", $headers, $data)
+            ->sheet('Verzuimmeldingen', ['Medewerker', 'Soort', 'Eerste ziektedag', 'Hersteld op', 'Percentage', 'Opmerking'], $detail)
+            ->download("verlof-verzuim-{$year}.xlsx");
     }
 
     /**
-     * @return array{0: int, 1: Collection<int, array<string, mixed>>}
+     * @return array{0: int, 1: string, 2: Collection<int, array<string, mixed>>}
      */
     private function build(Request $request): array
     {
         $year = (int) $request->query('year', now()->year);
+        $unit = $request->query('unit') === 'days' ? 'days' : 'hours';
         $from = Carbon::create($year, 1, 1);
         $to = Carbon::create($year, 12, 31);
         $until = $to->gt(today()) ? today() : $to;
 
         $employees = Employee::query()
-            ->with(['team', 'schedules', 'absences' => fn ($query) => $query
+            ->with(['teams', 'schedules', 'ledgerEntries', 'absences' => fn ($query) => $query
                 ->whereDate('start_date', '<=', $to)
                 ->where(fn ($query) => $query->whereNull('end_date')->orWhereDate('end_date', '>=', $from))])
-            ->with(['ledgerEntries'])
-            ->when($request->query('team_id'), fn ($query, $team) => $query->where('team_id', $team))
+            ->when($request->query('team_id'), fn ($query, $team) => $query->whereHas('teams', fn ($query) => $query->where('teams.id', $team)))
+            ->when($request->query('status', 'active') === 'active', fn ($query) => $query->employed())
             ->where(fn ($query) => $query->whereNull('hired_at')->orWhereDate('hired_at', '<=', $to))
             ->where(fn ($query) => $query->whereNull('left_at')->orWhereDate('left_at', '>=', $from))
             ->orderBy('last_name')
             ->get();
 
-        $rows = $employees->map(function (Employee $employee) use ($from, $until, $year): array {
+        $rows = $employees->map(function (Employee $employee) use ($from, $to, $until, $year, $unit): array {
+            $convert = fn (float $hours) => $unit === 'days' ? $employee->toDays($hours) : round($hours, 2);
             $vacation = $employee->ledgerEntries->where('kind', BalanceKind::Vacation);
             $inYear = $vacation->filter(fn ($entry) => $entry->entry_date->year === $year);
+            $negative = $inYear->filter(fn ($entry) => $entry->hours < 0);
 
             $absenceHours = 0.0;
             $absenceCount = 0;
@@ -98,9 +113,11 @@ class LeaveReportController extends Controller
 
             return [
                 'employee' => $employee,
-                'allocated' => round((float) $inYear->whereIn('reason', [LedgerReason::Allocation, LedgerReason::Carryover])->sum('hours'), 2),
-                'taken' => round(-1 * (float) $inYear->where('reason', LedgerReason::Taken)->sum('hours'), 2),
-                'vacation_balance' => round((float) $vacation->sum('hours'), 2),
+                'begin' => $convert((float) $vacation->filter(fn ($entry) => $entry->entry_date->lt($from))->sum('hours')),
+                'allocated' => $convert((float) $inYear->filter(fn ($entry) => $entry->hours > 0)->sum('hours')),
+                'taken' => $convert(-1 * (float) $negative->filter(fn ($entry) => $entry->entry_date->lte(today()))->sum('hours')),
+                'planned' => $convert(-1 * (float) $negative->filter(fn ($entry) => $entry->entry_date->gt(today()))->sum('hours')),
+                'end' => $convert((float) $vacation->filter(fn ($entry) => $entry->entry_date->lte($to))->sum('hours')),
                 'tvt_balance' => round((float) $employee->ledgerEntries->where('kind', BalanceKind::TimeForTime)->sum('hours'), 2),
                 'absence_count' => $absenceCount,
                 'absence_hours' => round($absenceHours, 2),
@@ -109,6 +126,6 @@ class LeaveReportController extends Controller
             ];
         });
 
-        return [$year, $rows];
+        return [$year, $unit, $rows];
     }
 }

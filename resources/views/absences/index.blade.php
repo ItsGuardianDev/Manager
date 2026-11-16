@@ -19,7 +19,7 @@
                 <tbody class="divide-y divide-slate-100">
                 @forelse ($absences as $absence)
                     <tr class="align-top">
-                        <td class="px-4 py-2.5"><a href="{{ route('employees.show', [$absence->employee, 'tab' => 'absence']) }}" class="font-medium hover:text-brand-700 hover:underline">{{ $absence->employee->full_name }}</a><div class="text-xs text-slate-500">{{ $absence->employee->team?->name }}</div></td>
+                        <td class="px-4 py-2.5"><a href="{{ route('employees.show', [$absence->employee, 'tab' => 'absence']) }}" class="font-medium hover:text-brand-700 hover:underline">{{ $absence->employee->full_name }}</a><div class="text-xs text-slate-500">{{ $absence->employee->teams->pluck('name')->implode(', ') }}</div></td>
                         <td class="whitespace-nowrap px-4 py-2.5">{{ $absence->start_date->format('d-m-Y') }} – {{ $absence->end_date?->format('d-m-Y') ?? 'lopend' }}</td>
                         <td class="px-4 py-2.5">{{ $absence->type->label() }}</td>
                         <td class="px-4 py-2.5">{{ $absence->percentage }}%</td>

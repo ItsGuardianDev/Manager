@@ -5,11 +5,13 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\HandlesCsv;
 use App\Models\Organization;
 use App\Models\Person;
+use App\Services\XlsxWriter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PersonImportExportController extends Controller
@@ -31,8 +33,12 @@ class PersonImportExportController extends Controller
     /**
      * One row per person/company link, so people with several companies repeat.
      */
-    public function export(Request $request): StreamedResponse
+    public function export(Request $request): StreamedResponse|BinaryFileResponse
     {
+        if ($request->query('format') !== 'csv') {
+            return $this->exportWorkbook($request);
+        }
+
         $people = Person::query()
             ->with('organizations')
             ->filter($request->query())
@@ -58,6 +64,31 @@ class PersonImportExportController extends Controller
         })();
 
         return $this->streamCsv('personen-'.now()->format('Y-m-d').'.csv', self::FIELDS, $rows);
+    }
+
+    private function exportWorkbook(Request $request): BinaryFileResponse
+    {
+        $people = Person::query()->with(['organizations', 'notes.author'])->filter($request->query())
+            ->orderBy('last_name')->orderBy('first_name')->get();
+        $yes = fn (bool $value) => $value ? 'Ja' : 'Nee';
+        $gender = ['male' => 'Man', 'female' => 'Vrouw', 'other' => 'Anders'];
+
+        $rows = $people->map(fn (Person $p) => [
+            $p->full_name, $p->initials, $gender[$p->gender] ?? null, $p->date_of_birth, $p->email, $p->phone, $p->mobile, $p->linkedin_url,
+            $p->street, $p->zipcode, $p->city, $p->country, $yes($p->is_active), $p->created_at,
+        ]);
+
+        $links = $people->flatMap(fn (Person $p) => $p->organizations->map(fn ($o) => [
+            $p->full_name, $o->name, $o->pivot->job_title, $o->pivot->department, $yes((bool) $o->pivot->is_primary),
+        ]));
+
+        $notes = $people->flatMap(fn (Person $p) => $p->notes->map(fn ($n) => [$p->full_name, $n->created_at, $n->author?->name, $n->body]));
+
+        return XlsxWriter::make()
+            ->sheet('Personen', ['Naam', 'Voorletters', 'Geslacht', 'Geboortedatum', 'E-mail', 'Telefoon', 'Mobiel', 'LinkedIn', 'Adres', 'Postcode', 'Plaats', 'Land', 'Actief', 'Aangemaakt op'], $rows)
+            ->sheet('Bedrijven', ['Persoon', 'Bedrijf', 'Functie', 'Afdeling', 'Hoofdbedrijf'], $links)
+            ->sheet('Notities', ['Persoon', 'Datum', 'Auteur', 'Notitie'], $notes)
+            ->download('personen-'.now()->format('Y-m-d').'.xlsx');
     }
 
     public function template(): StreamedResponse

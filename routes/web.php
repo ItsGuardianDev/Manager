@@ -3,12 +3,13 @@
 use App\Http\Controllers\AbsenceController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CollectiveLeaveController;
+use App\Http\Controllers\CustomerGroupController;
+use App\Http\Controllers\DebtorController;
 use App\Http\Controllers\DisciplineController;
+use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\EmployeeAccessController;
 use App\Http\Controllers\EmployeeController;
-use App\Http\Controllers\EmployeeDocumentController;
 use App\Http\Controllers\EmployeeImportExportController;
-use App\Http\Controllers\EmployeeRateController;
 use App\Http\Controllers\EmploymentContractController;
 use App\Http\Controllers\InvitationController;
 use App\Http\Controllers\LeaveBalanceController;
@@ -20,6 +21,7 @@ use App\Http\Controllers\OrganizationImportExportController;
 use App\Http\Controllers\OrganizationPersonController;
 use App\Http\Controllers\PersonController;
 use App\Http\Controllers\PersonImportExportController;
+use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\UserGroupController;
 use App\Http\Controllers\WorkScheduleController;
@@ -44,6 +46,10 @@ Route::middleware('auth')->group(function () {
     Route::patch('organizations/{organization}/toggle-active', [OrganizationController::class, 'toggleActive'])->name('organizations.toggle-active');
     Route::post('organizations/{organization}/notes', [NoteController::class, 'storeForOrganization'])->name('organizations.notes.store');
     Route::resource('organizations', OrganizationController::class)->except('destroy');
+
+    Route::patch('preferences/organization-charts', [PreferenceController::class, 'organizationCharts'])->name('preferences.organization-charts');
+    Route::get('debtors', [DebtorController::class, 'index'])->name('debtors.index');
+    Route::resource('customer-groups', CustomerGroupController::class)->only(['index', 'store', 'update', 'destroy'])->parameters(['customer-groups' => 'customerGroup']);
 
     // People
     Route::get('people/export', [PersonImportExportController::class, 'export'])->name('people.export');
@@ -76,13 +82,10 @@ Route::middleware('auth')->group(function () {
         Route::delete('contracts/{contract}', [EmploymentContractController::class, 'destroy'])->name('contracts.destroy');
         Route::post('schedules', [WorkScheduleController::class, 'store'])->name('schedules.store');
         Route::delete('schedules/{schedule}', [WorkScheduleController::class, 'destroy'])->name('schedules.destroy');
-        Route::post('rates', [EmployeeRateController::class, 'store'])->name('rates.store');
-        Route::delete('rates/{rate}', [EmployeeRateController::class, 'destroy'])->name('rates.destroy');
         Route::post('leave', [LeaveRequestController::class, 'store'])->name('leave.store');
         Route::post('balance', [LeaveBalanceController::class, 'store'])->name('balance.store');
-        Route::post('documents', [EmployeeDocumentController::class, 'store'])->name('documents.store');
-        Route::get('documents/{document}', [EmployeeDocumentController::class, 'show'])->name('documents.show');
-        Route::delete('documents/{document}', [EmployeeDocumentController::class, 'destroy'])->name('documents.destroy');
+        Route::post('documents', [DocumentController::class, 'storeForEmployee'])->name('documents.store');
+        Route::get('photo', [EmployeeController::class, 'photo'])->name('photo');
         Route::post('notes', [NoteController::class, 'storeForEmployee'])->name('notes.store');
     });
 
@@ -98,6 +101,12 @@ Route::middleware('auth')->group(function () {
     Route::resource('disciplines', DisciplineController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::resource('user-groups', UserGroupController::class)->only(['index', 'store', 'update', 'destroy'])->parameters(['user-groups' => 'group']);
     Route::patch('users/{user}/group', [UserGroupController::class, 'assign'])->name('users.group');
+
+    Route::post('organizations/{organization}/documents', [DocumentController::class, 'storeForOrganization'])->name('organizations.documents.store');
+    Route::post('people/{person}/documents', [DocumentController::class, 'storeForPerson'])->name('people.documents.store');
+    Route::get('documents/{document}', [DocumentController::class, 'show'])->name('documents.show');
+    Route::delete('documents/{document}', [DocumentController::class, 'destroy'])->name('documents.destroy');
+    Route::get('notes/{note}/attachment', [NoteController::class, 'attachment'])->name('notes.attachment');
 
     Route::delete('notes/{note}', [NoteController::class, 'destroy'])->name('notes.destroy');
 });

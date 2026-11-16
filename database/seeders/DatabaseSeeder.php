@@ -53,12 +53,16 @@ class DatabaseSeeder extends Seeder
 
         $manager = Employee::factory()->create([
             'first_name' => 'Admin', 'last_name' => 'Beheerder', 'email' => $admin->email, 'user_id' => $admin->id,
-            'job_title' => 'Directeur', 'team_id' => $teams[2]->id, 'discipline_id' => $disciplines[3]->id,
+            'job_title' => 'Directeur',
         ]);
+        $manager->teams()->attach($teams[2]);
+        $manager->disciplines()->attach($disciplines[3]);
 
-        $employees = Employee::factory(11)->create()->each(fn (Employee $employee) => $employee->update([
-            'team_id' => $teams->random()->id, 'discipline_id' => $disciplines->random()->id, 'manager_id' => $manager->id,
-        ]))->push($manager);
+        $employees = Employee::factory(11)->create()->each(function (Employee $employee) use ($teams, $disciplines, $manager): void {
+            $employee->update(['manager_id' => $manager->id]);
+            $employee->teams()->attach($teams->random(random_int(1, 2))->pluck('id'));
+            $employee->disciplines()->attach($disciplines->random()->id);
+        })->push($manager);
 
         $day = ['start' => '09:00', 'end' => '17:30', 'break' => 30];
         $alternatingWeek = fn (array $days) => array_fill_keys($days, $day);
@@ -76,13 +80,13 @@ class DatabaseSeeder extends Seeder
 
             $employee->schedules()->create([
                 'effective_from' => $employee->hired_at,
+                'cost_rate' => 45 + $index * 2,
+                'sales_rate' => 90 + $index * 3,
                 'alternating' => $index % 5 === 0,
                 'pattern' => $index % 5 === 0
                     ? ['odd' => $alternatingWeek([1, 2, 3, 4]), 'even' => $alternatingWeek([1, 2, 3, 4, 5])]
                     : ['odd' => $alternatingWeek($index % 3 === 0 ? [1, 2, 3, 4] : [1, 2, 3, 4, 5])],
             ]);
-
-            $employee->rates()->create(['effective_from' => $employee->hired_at, 'cost_rate' => 45 + $index * 2, 'sales_rate' => 90 + $index * 3]);
 
             $employee->ledgerEntries()->create([
                 'kind' => BalanceKind::Vacation, 'reason' => LedgerReason::Allocation, 'hours' => 200,

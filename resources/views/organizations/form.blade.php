@@ -46,6 +46,8 @@
                 <x-select inline name="relation_manager_id" label="Relatiebeheerder" placeholder="" :options="$employees->pluck('name', 'id')" :selected="$organization->relation_manager_id" />
                 <x-select inline name="industry_id" label="Branche" placeholder="" :options="$industries->pluck('name', 'id')" :selected="$organization->industry_id" />
                 <x-select inline name="company_size_id" label="Bedrijfsgrootte" placeholder="" :options="$sizes->pluck('name', 'id')" :selected="$organization->company_size_id" />
+                <x-select inline name="team_id" label="Team" placeholder="" :options="$teams" :selected="$organization->team_id" />
+                <x-select inline name="customer_group_id" label="Klantgroep" placeholder="" :options="$customerGroups" :selected="$organization->customer_group_id" />
             </div>
 
             <div class="space-y-3">
@@ -67,21 +69,26 @@
                     <x-field inline name="postal_city" label="Plaatsnaam" :value="$organization->postal_city" />
                 </div>
 
-                <h2 class="pt-4 text-lg font-semibold text-brand-700">Facturatiegegevens</h2>
+                <h2 class="pt-4 text-lg font-semibold text-brand-700">Facturatievoorkeuren</h2>
+                <x-select inline name="invoice_attention" label="Factuur t.a.v." :options="collect(App\Enums\InvoiceAttention::cases())->mapWithKeys(fn ($a) => [$a->value => $a->label()])" :selected="$organization->invoice_attention?->value ?? 'none'" />
+                <x-select inline name="invoice_contact_person_id" label="Contactpersoon" placeholder="" :options="$contactPeople" :selected="$organization->invoice_contact_person_id" />
+                <x-select inline name="invoice_delivery" label="Factuurverstrekking" placeholder="" :options="collect(App\Enums\InvoiceDelivery::cases())->mapWithKeys(fn ($d) => [$d->value => $d->label()])" :selected="$organization->invoice_delivery?->value" />
+                <x-select inline name="payment_term_days" label="Betaaltermijn" placeholder="" :options="App\Models\Organization::PAYMENT_TERMS" :selected="$organization->payment_term_days" />
+                <x-select inline name="default_vat_code" label="Standaard btw-code" placeholder="(geen standaard btw-code)" :options="App\Models\Organization::VAT_CODES" :selected="$organization->default_vat_code" />
                 <x-field inline name="vat_number" label="Btw-nummer" :value="$organization->vat_number" />
-                <x-field inline name="billing_name" label="Factuurnaam" :value="$organization->billing_name" hint="Leeg = bedrijfsnaam" />
-                <x-field inline name="billing_attention" label="T.a.v." :value="$organization->billing_attention" />
-                <x-field inline name="billing_email" label="Factuur e-mail" type="email" :value="$organization->billing_email" />
-                <x-select inline name="billing_country" label="Land" placeholder="" :options="collect(array_unique([...App\Models\Organization::COUNTRIES, ...array_filter([$organization->{'billing_country'}])]))->mapWithKeys(fn ($c) => [$c => $c])" :selected="$organization->billing_country" />
-                <x-field inline name="billing_street" label="Adres" :value="$organization->billing_street" />
-                <x-field inline name="billing_zipcode" label="Postcode" :value="$organization->billing_zipcode" />
-                <x-field inline name="billing_city" label="Plaatsnaam" :value="$organization->billing_city" />
-                <x-field inline name="iban" label="IBAN" :value="$organization->iban" />
-                <x-field inline name="bic" label="BIC" :value="$organization->bic" />
-                <x-field inline name="debtor_number" label="Debiteurnummer" :value="$organization->debtor_number" />
-                <x-field inline name="invoice_reference" label="Referentie / PO" :value="$organization->invoice_reference" />
-                <x-select inline name="invoice_delivery" label="Verstrekkingswijze" placeholder="" :options="collect(App\Enums\InvoiceDelivery::cases())->mapWithKeys(fn ($d) => [$d->value => $d->label()])" :selected="$organization->invoice_delivery?->value" />
-                <x-field inline name="payment_term_days" label="Betalingstermijn" type="number" min="0" max="365" :value="$organization->payment_term_days" hint="In dagen" />
+                <div class="grid grid-cols-[8.5rem_1fr] items-center gap-x-4">
+                    <span class="text-sm font-medium text-slate-700">Is vrijgesteld van btw</span>
+                    <label><input type="checkbox" name="is_vat_exempt" value="1" @checked(old('is_vat_exempt', $organization->is_vat_exempt)) class="rounded border-slate-300 text-brand-600"></label>
+                </div>
+                <x-field inline name="iban" label="IBAN nummer" :value="$organization->iban" />
+                <x-field inline name="bic" label="BIC code" :value="$organization->bic" />
+                <x-select inline name="invoice_template" label="Factuurjabloon" placeholder="" :options="App\Models\Organization::INVOICE_TEMPLATES" :selected="$organization->invoice_template" />
+                <x-select inline name="reminder_plan" label="Herinneringsplan" placeholder="" :options="App\Models\Organization::REMINDER_PLANS" :selected="$organization->reminder_plan" />
+                <div class="grid grid-cols-[8.5rem_1fr] items-center gap-x-4">
+                    <label for="use_reminder_email" class="text-sm font-medium text-slate-700">Afwijkend e-mailadres voor herinneringen</label>
+                    <label><input type="checkbox" id="use_reminder_email" name="use_reminder_email" value="1" data-reveal="reminder-email-field" @checked(old('use_reminder_email', filled($organization->reminder_email))) class="rounded border-slate-300 text-brand-600"></label>
+                </div>
+                <div id="reminder-email-field"><x-field inline name="reminder_email" label="E-mail herinneringen" type="email" :value="$organization->reminder_email" /></div>
             </div>
         </div>
     </div>

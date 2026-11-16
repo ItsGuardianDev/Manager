@@ -3,22 +3,33 @@
 namespace App\Models;
 
 use App\Enums\BalanceKind;
+use App\Enums\EmployeeType;
+use App\Enums\LedgerReason;
+use App\Models\Concerns\HasTimeline;
 use Illuminate\Database\Eloquent\Attributes\Guarded;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 
 #[Guarded(['id'])]
 class Employee extends Model
 {
-    use HasFactory;
+    use HasFactory, HasTimeline;
+
+    /**
+     * @var array<string, string>
+     */
+    public const MARITAL_STATUSES = [
+        'single' => 'Ongehuwd', 'married' => 'Gehuwd', 'registered' => 'Geregistreerd partnerschap',
+        'cohabiting' => 'Samenwonend', 'divorced' => 'Gescheiden', 'widowed' => 'Weduwe/weduwnaar',
+    ];
 
     /**
      * Fields only visible to people allowed to see private data.
@@ -27,7 +38,7 @@ class Employee extends Model
      */
     public const PRIVATE_FIELDS = [
         'private_email', 'date_of_birth', 'gender', 'street', 'zipcode', 'city', 'country', 'nationality', 'bsn', 'iban',
-        'emergency_contact_name', 'emergency_contact_phone',
+        'emergency_contact_name', 'emergency_contact_phone', 'marital_status', 'private_phone',
     ];
 
     /**
@@ -41,6 +52,7 @@ class Employee extends Model
             'left_at' => 'date',
             'bsn' => 'encrypted',
             'is_active' => 'boolean',
+            'employee_type' => EmployeeType::class,
         ];
     }
 
@@ -67,9 +79,14 @@ class Employee extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function team(): BelongsTo
+    public function teams(): BelongsToMany
     {
-        return $this->belongsTo(Team::class);
+        return $this->belongsToMany(Team::class)->orderBy('name');
+    }
+
+    public function person(): BelongsTo
+    {
+        return $this->belongsTo(Person::class);
     }
 
     public function manager(): BelongsTo
@@ -82,9 +99,9 @@ class Employee extends Model
         return $this->hasMany(self::class, 'manager_id');
     }
 
-    public function discipline(): BelongsTo
+    public function disciplines(): BelongsToMany
     {
-        return $this->belongsTo(Discipline::class);
+        return $this->belongsToMany(Discipline::class)->orderBy('name');
     }
 
     public function contracts(): HasMany
@@ -105,11 +122,6 @@ class Employee extends Model
         return $this->hasMany(WorkSchedule::class)->orderByDesc('effective_from');
     }
 
-    public function rates(): HasMany
-    {
-        return $this->hasMany(EmployeeRate::class)->orderByDesc('effective_from');
-    }
-
     public function leaveRequests(): HasMany
     {
         return $this->hasMany(LeaveRequest::class)->orderByDesc('start_date');
@@ -125,16 +137,6 @@ class Employee extends Model
         return $this->hasMany(Absence::class)->orderByDesc('start_date');
     }
 
-    public function documents(): HasMany
-    {
-        return $this->hasMany(EmployeeDocument::class)->latest();
-    }
-
-    public function notes(): MorphMany
-    {
-        return $this->morphMany(Note::class, 'noteable')->latest();
-    }
-
     public function balance(BalanceKind $kind): float
     {
         return round((float) $this->ledgerEntries()->getQuery()->reorder()->where('kind', $kind->value)->sum('hours'), 2);
@@ -145,9 +147,111 @@ class Employee extends Model
         return $this->schedules->first(fn (WorkSchedule $schedule) => $schedule->effective_from->lte($date));
     }
 
-    public function rateOn(Carbon $date): ?EmployeeRate
+    /**
+     * Balance as it stands on a date (entries dated later are still planned).
+     */
+    public function balanceAsOf(BalanceKind $kind, Carbon $date): float
     {
-        return $this->rates->first(fn (EmployeeRate $rate) => $rate->effective_from->lte($date));
+        return round((float) $this->ledgerEntries->where('kind', $kind)->filter(fn ($entry) => $entry->entry_date->lte($date))->sum('hours'), 2);
+    }
+
+    /**
+     * Hours of approved leave that still lie in the future.
+     */
+    public function plannedHours(BalanceKind $kind): float
+    {
+        return round(-1 * (float) $this->ledgerEntries->where('kind', $kind)->where('reason', LedgerReason::Taken)
+            ->filter(fn ($entry) => $entry->entry_date->gt(today()))->sum('hours'), 2);
+    }
+
+    /**
+     * Average hours on a working day of the current schedule, used to express hours as days.
+     */
+    public function hoursPerDay(): float
+    {
+        $schedule = $this->scheduleOn(today());
+        $days = $schedule ? count($schedule->pattern['odd'] ?? []) : 0;
+
+        return $schedule && $days > 0 ? max(1.0, $schedule->weeklyHours('odd') / $days) : 8.0;
+    }
+
+    public function toDays(float $hours): float
+    {
+        return round($hours / $this->hoursPerDay(), 2);
+    }
+
+    /**
+     * Sick hours and sickness percentage in a calendar year.
+     *
+     * @return array{hours: float, percentage: float}
+     */
+    public function absenceStats(int $year): array
+    {
+        $from = Carbon::create($year, 1, 1);
+        $until = Carbon::create($year, 12, 31)->min(today());
+        $hours = 0.0;
+
+        foreach ($this->absences as $absence) {
+            $start = $absence->start_date->max($from);
+            $end = ($absence->end_date ?? today())->min($until);
+
+            if ($start->lte($end)) {
+                $hours += $this->scheduledHours($start, $end) * $absence->percentage / 100;
+            }
+        }
+
+        $scheduled = $from->lte($until) ? $this->scheduledHours($from, $until) : 0.0;
+
+        return ['hours' => round($hours, 2), 'percentage' => $scheduled > 0 ? round($hours / $scheduled * 100, 2) : 0.0];
+    }
+
+    /**
+     * The last day a schedule applies: the day before the next schedule starts, or null while open-ended.
+     */
+    public function scheduleEnd(WorkSchedule $schedule): ?Carbon
+    {
+        $next = $this->schedules->filter(fn (WorkSchedule $other) => $other->effective_from->gt($schedule->effective_from))
+            ->sortBy('effective_from')->first();
+
+        return $next?->effective_from->copy()->subDay();
+    }
+
+    protected static function booted(): void
+    {
+        static::saved(fn (Employee $employee) => $employee->syncPerson());
+    }
+
+    /**
+     * Employees are also people: keep a CRM person with the work contact details in sync (never private data).
+     */
+    public function syncPerson(): void
+    {
+        $person = $this->person
+            ?? Person::where('email', $this->email)->whereDoesntHave('employee')->first()
+            ?? new Person;
+
+        $emailTaken = Person::where('email', $this->email)->whereKeyNot($person->id ?? 0)->exists();
+
+        $person->fill([
+            'first_name' => $this->first_name,
+            'initials' => $this->initials,
+            'last_name_prefix' => $this->last_name_prefix,
+            'last_name' => $this->last_name,
+            'email' => $emailTaken ? $person->email : $this->email,
+            'phone' => $this->phone,
+            'mobile' => $this->mobile,
+            'linkedin_url' => $this->linkedin_url,
+            'twitter_url' => $this->twitter_url,
+            'facebook_url' => $this->facebook_url,
+            'is_active' => $this->is_employed,
+        ])->save();
+
+        if ($this->person_id !== $person->id) {
+            $this->person_id = $person->id;
+            $this->saveQuietly();
+        }
+
+        $this->setRelation('person', $person);
     }
 
     /**
@@ -183,8 +287,9 @@ class Employee extends Model
         }
 
         return $query
-            ->when(Arr::wrap($filters['team_id'] ?? []), fn (Builder $query, array $ids) => $query->whereIn('team_id', $ids))
-            ->when(Arr::wrap($filters['discipline_id'] ?? []), fn (Builder $query, array $ids) => $query->whereIn('discipline_id', $ids))
+            ->when(Arr::wrap($filters['team_id'] ?? []), fn (Builder $query, array $ids) => $query->whereHas('teams', fn (Builder $query) => $query->whereIn('teams.id', $ids)))
+            ->when(Arr::wrap($filters['discipline_id'] ?? []), fn (Builder $query, array $ids) => $query->whereHas('disciplines', fn (Builder $query) => $query->whereIn('disciplines.id', $ids)))
+            ->when(Arr::wrap($filters['employee_type'] ?? []), fn (Builder $query, array $types) => $query->whereIn('employee_type', $types))
             ->when(Arr::wrap($filters['manager_id'] ?? []), fn (Builder $query, array $ids) => $query->whereIn('manager_id', $ids))
             ->when(Arr::wrap($filters['contract_type'] ?? []), fn (Builder $query, array $types) => $query->whereHas(
                 'currentContract', fn (Builder $query) => $query->whereIn('contract_type', $types)

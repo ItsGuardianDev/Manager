@@ -5,22 +5,27 @@
 <div class="flex min-w-0 flex-1 flex-col gap-4 p-4 sm:p-5">
     <div class="flex shrink-0 flex-wrap items-center justify-end gap-2 text-sm">
         <button type="button" data-toggle="filters" class="rounded-full bg-white px-4 py-2 font-medium text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 lg:hidden">Filters</button>
+        <button type="button" data-open-dialog="view-dialog" class="rounded-full bg-white px-4 py-2 font-medium text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50">Weergave</button>
         <details class="relative">
             <summary class="cursor-pointer list-none rounded-full bg-white px-4 py-2 font-medium text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50">Opties</summary>
             <div class="absolute right-0 z-20 mt-2 w-52 rounded-lg bg-white p-1 shadow-lg ring-1 ring-slate-200">
                 <a href="{{ route('organizations.import') }}" class="block rounded-md px-3 py-2 hover:bg-slate-100">Bedrijven importeren</a>
+                <a href="{{ route('organizations.export', [...request()->query(), 'format' => 'csv']) }}" class="block rounded-md px-3 py-2 hover:bg-slate-100">Exporteren als CSV</a>
                 <a href="{{ route('organizations.import.template') }}" class="block rounded-md px-3 py-2 hover:bg-slate-100">Importsjabloon downloaden</a>
+                <a href="{{ route('customer-groups.index') }}" class="block rounded-md px-3 py-2 hover:bg-slate-100">Klantgroepen beheren</a>
             </div>
         </details>
-        <a href="{{ route('organizations.export', request()->query()) }}" class="rounded-full bg-white px-4 py-2 font-medium text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50">Exporteren</a>
+        <a href="{{ route('organizations.export', request()->query()) }}" class="rounded-full bg-white px-4 py-2 font-medium text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50">Exporteren naar Excel</a>
         <a href="{{ route('organizations.create') }}" class="rounded-full bg-brand-700 px-4 py-2 font-semibold text-white hover:bg-brand-800">+ Nieuw</a>
     </div>
 
+    @if (count($selectedCharts) > 0)
     <div class="grid shrink-0 gap-4 md:grid-cols-3">
-        <x-donut title="Relatiesoort" :data="$charts['type']" />
-        <x-donut title="Branche" :data="$charts['industry']" />
-        <x-donut title="Bedrijfsgrootte" :data="$charts['size']" />
+        @foreach ($chartOptions as $key => $label)
+            @if (in_array($key, $selectedCharts, true))<x-donut :title="$label" :data="$charts[$key]" />@endif
+        @endforeach
     </div>
+    @endif
 
     <div class="flex min-h-[28rem] flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 lg:min-h-0 lg:flex-1">
     <div class="min-h-0 flex-1 overflow-auto">
@@ -82,10 +87,29 @@
         <x-filter-group title="Relatiebeheerder" name="relation_manager_id" :options="$employees->pluck('name', 'id')" />
         <x-filter-group title="Branche" name="industry_id" :options="$industries->pluck('name', 'id')" />
         <x-filter-group title="Bedrijfsgrootte" name="company_size_id" :options="$sizes->pluck('name', 'id')" />
+        <x-filter-group title="Land" name="visit_country" :options="$countries" />
+        <x-filter-group title="Team" name="team_id" :options="$teams" />
+        <x-filter-group title="Klantgroep" name="customer_group_id" :options="$customerGroups" />
         <x-filter-group title="Verstrekkingswijze" name="invoice_delivery" :options="collect(App\Enums\InvoiceDelivery::cases())->mapWithKeys(fn ($d) => [$d->value => $d->label()])" />
 
         <a href="{{ route('organizations.index') }}" class="text-sm text-brand-700 hover:underline">Filters wissen</a>
     </form>
 </aside>
 </div>
+
+<dialog id="view-dialog" class="m-auto w-full max-w-lg rounded-2xl p-0 shadow-xl backdrop:bg-slate-900/40">
+    <form method="POST" action="{{ route('preferences.organization-charts') }}" class="flex max-h-[80vh] flex-col">
+        @csrf @method('PATCH')
+        <div class="px-6 pt-6"><h2 class="text-lg font-semibold">Weergave</h2><p class="mt-1 text-sm text-slate-600">Kies welke grafieken je boven de lijst ziet. De grafieken volgen de filters aan de rechterkant.</p></div>
+        <div class="space-y-2 overflow-y-auto px-6 py-4">
+            @foreach ($chartOptions as $key => $label)
+                <label class="flex items-center gap-3 rounded-lg bg-slate-50 px-4 py-3 text-sm"><input type="checkbox" name="charts[]" value="{{ $key }}" @checked(in_array($key, $selectedCharts, true)) class="rounded border-slate-300 text-brand-600"> <span class="font-medium">{{ $label }}</span></label>
+            @endforeach
+        </div>
+        <div class="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
+            <button type="button" data-close-dialog class="rounded-full px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">Annuleren</button>
+            <button class="rounded-full bg-brand-700 px-5 py-2 text-sm font-semibold text-white hover:bg-brand-800">Opslaan</button>
+        </div>
+    </form>
+</dialog>
 @endsection

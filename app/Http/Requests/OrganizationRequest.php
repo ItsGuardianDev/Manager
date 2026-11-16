@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\InvoiceAttention;
 use App\Enums\InvoiceDelivery;
 use App\Enums\OrganizationType;
 use App\Models\Organization;
@@ -27,6 +28,9 @@ class OrganizationRequest extends FormRequest
             'vat_number' => $this->filled('vat_number') ? strtoupper(preg_replace('/[\s.]+/', '', $this->string('vat_number')->toString())) : null,
             'iban' => $this->filled('iban') ? strtoupper(preg_replace('/\s+/', '', $this->string('iban')->toString())) : null,
             'is_active' => $this->boolean('is_active', true),
+            'is_vat_exempt' => $this->boolean('is_vat_exempt'),
+            'invoice_attention' => $this->input('invoice_attention') ?: 'none',
+            'reminder_email' => $this->boolean('use_reminder_email') ? $this->input('reminder_email') : null,
         ]);
     }
 
@@ -73,19 +77,21 @@ class OrganizationRequest extends FormRequest
             'postal_city' => ['nullable', 'string', 'max:255'],
             'postal_country' => ['nullable', 'string', 'max:100'],
 
-            'billing_name' => ['nullable', 'string', 'max:255'],
-            'billing_attention' => ['nullable', 'string', 'max:255'],
-            'billing_email' => ['nullable', 'email:rfc', 'max:255'],
-            'billing_street' => ['nullable', 'string', 'max:255'],
-            'billing_zipcode' => ['nullable', 'string', 'max:20'],
-            'billing_city' => ['nullable', 'string', 'max:255'],
-            'billing_country' => ['nullable', 'string', 'max:100'],
+            'team_id' => ['nullable', 'exists:teams,id'],
+            'customer_group_id' => ['nullable', 'exists:customer_groups,id'],
+
+            'invoice_attention' => ['nullable', Rule::enum(InvoiceAttention::class)],
+            'invoice_contact_person_id' => ['nullable', 'exists:people,id'],
+            'invoice_delivery' => ['nullable', Rule::enum(InvoiceDelivery::class)],
+            'payment_term_days' => ['nullable', 'integer', Rule::in(array_keys(Organization::PAYMENT_TERMS))],
+            'default_vat_code' => ['nullable', Rule::in(array_keys(Organization::VAT_CODES))],
+            'is_vat_exempt' => ['boolean'],
             'iban' => ['nullable', 'string', 'max:34'],
             'bic' => ['nullable', 'string', 'max:11'],
-            'debtor_number' => ['nullable', 'string', 'max:50'],
-            'invoice_reference' => ['nullable', 'string', 'max:255'],
-            'invoice_delivery' => ['nullable', Rule::enum(InvoiceDelivery::class)],
-            'payment_term_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'invoice_template' => ['nullable', Rule::in(array_keys(Organization::INVOICE_TEMPLATES))],
+            'reminder_plan' => ['nullable', Rule::in(array_keys(Organization::REMINDER_PLANS))],
+            'use_reminder_email' => ['nullable', 'boolean'],
+            'reminder_email' => ['nullable', 'email:rfc', 'max:255'],
         ];
     }
 }

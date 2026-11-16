@@ -21,7 +21,7 @@ class WorkSchedule extends Model
      */
     protected function casts(): array
     {
-        return ['effective_from' => 'date', 'alternating' => 'boolean', 'pattern' => 'array'];
+        return ['effective_from' => 'date', 'alternating' => 'boolean', 'pattern' => 'array', 'cost_rate' => 'decimal:2', 'sales_rate' => 'decimal:2'];
     }
 
     public function employee(): BelongsTo

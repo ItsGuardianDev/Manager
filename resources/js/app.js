@@ -64,3 +64,69 @@ document.addEventListener('change', (event) => {
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('[data-reveal]').forEach(syncReveal);
 });
+
+document.addEventListener('input', (event) => {
+    const timeline = event.target.closest('[data-timeline]');
+    const docs = event.target.closest('[data-documents]');
+
+    if (timeline && event.target.matches('[data-timeline-q]')) {
+        filterTimeline(timeline);
+    }
+
+    if (docs && event.target.matches('[data-doc-q]')) {
+        filterDocuments(docs);
+    }
+});
+
+document.addEventListener('change', (event) => {
+    const timeline = event.target.closest('[data-timeline]');
+    const docs = event.target.closest('[data-documents]');
+
+    if (timeline && event.target.matches('[data-timeline-type]')) {
+        filterTimeline(timeline);
+    }
+
+    if (docs && event.target.matches('[data-doc-ext]')) {
+        filterDocuments(docs);
+    }
+
+    if (event.target.matches('[data-file-input]')) {
+        const label = event.target.closest('label').querySelector('[data-file-label]');
+        label.textContent = event.target.files[0]?.name ?? 'Voeg bijlage toe';
+    }
+});
+
+function filterTimeline(root) {
+    const query = root.querySelector('[data-timeline-q]').value.trim().toLowerCase();
+    const type = root.querySelector('[data-timeline-type]').value;
+    let visible = 0;
+
+    root.querySelectorAll('[data-timeline-item]').forEach((item) => {
+        const show = (!type || item.dataset.type === type) && (!query || item.dataset.text.includes(query));
+        item.classList.toggle('hidden', !show);
+        visible += show ? 1 : 0;
+    });
+
+    root.querySelector('[data-timeline-empty]')?.classList.toggle('hidden', visible > 0);
+}
+
+document.addEventListener('click', (event) => {
+    const opener = event.target.closest('[data-open-dialog]');
+
+    if (opener) {
+        document.getElementById(opener.dataset.openDialog)?.showModal();
+    }
+
+    if (event.target.closest('[data-close-dialog]')) {
+        event.target.closest('dialog')?.close();
+    }
+});
+
+function filterDocuments(root) {
+    const query = root.querySelector('[data-doc-q]').value.trim().toLowerCase();
+    const ext = root.querySelector('[data-doc-ext]').value;
+
+    root.querySelectorAll('[data-doc-row]').forEach((row) => {
+        row.classList.toggle('hidden', !((!ext || row.dataset.ext === ext) && (!query || row.dataset.text.includes(query))));
+    });
+}

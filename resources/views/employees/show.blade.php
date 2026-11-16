@@ -16,11 +16,10 @@
     $tabs = array_filter([
         'overview' => 'Overzicht',
         'contracts' => $canContracts ? 'Contracten' : null,
-        'schedule' => $canContracts ? 'Rooster & tarieven' : null,
+        'schedule' => $canContracts ? 'Rooster' : null,
         'leave' => $canLeave ? 'Verlof' : null,
         'absence' => $canAbsence ? 'Verzuim' : null,
-        'file' => $canFile ? 'Dossier' : null,
-        'timeline' => $canTimeline ? 'Tijdlijn' : null,
+        'file' => $canFile ? 'Personeelsdossier' : null,
         'access' => $canAccess ? 'Toegang' : null,
     ]);
     $input = 'block w-full rounded-lg border-0 bg-white px-3 py-2 text-sm shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600';
@@ -31,7 +30,11 @@
 <x-hr-nav />
 <div class="flex shrink-0 flex-wrap items-start justify-between gap-4">
     <div class="flex items-center gap-4">
-        <span class="grid size-14 place-items-center rounded-full bg-brand-100 text-lg font-semibold text-brand-700">{{ $employee->initials_label }}</span>
+        @if ($employee->photo_path)
+            <img src="{{ route('employees.photo', $employee) }}" alt="" class="size-14 rounded-full object-cover">
+        @else
+            <span class="grid size-14 place-items-center rounded-full bg-brand-100 text-lg font-semibold text-brand-700">{{ $employee->initials_label }}</span>
+        @endif
         <div>
             @if ($me->can('viewAny', \App\Models\Employee::class))<a href="{{ route('employees.index') }}" class="text-sm text-slate-500 hover:text-slate-800">← Medewerkers</a>@endif
             <div class="flex flex-wrap items-center gap-3">
@@ -39,7 +42,7 @@
                 <x-status-badge :active="$employee->is_employed" />
                 @if ($employee->left_at && $employee->is_employed)<span class="text-xs text-rose-600">Uit dienst per {{ $fmt($employee->left_at) }}</span>@endif
             </div>
-            <p class="text-sm text-slate-500">{{ collect([$employee->job_title, $employee->team?->name, $employee->employee_number])->filter()->implode(' · ') }}</p>
+            <p class="text-sm text-slate-500">{{ collect([$employee->job_title, $employee->teams->pluck('name')->implode(', '), $employee->employee_number])->filter()->implode(' · ') }}</p>
         </div>
     </div>
     @can('update', $employee)
@@ -76,49 +79,63 @@
 
     <div class="min-h-0 flex-1 pt-4">
     {{-- Overzicht --}}
-    <div data-tab-panel="overview" class="grid gap-4 lg:h-full lg:grid-cols-3">
-        <x-card title="Contactgegevens">
-            <dl class="divide-y divide-slate-100 text-sm">
-                {!! $row('Werk e-mail', $employee->email) !!}
-                {!! $row('Telefoon', $employee->phone) !!}
-                {!! $row('Mobiel', $employee->mobile) !!}
-                @if ($canPrivate)
-                    {!! $row('Privé e-mail', $employee->private_email) !!}
+    <div data-tab-panel="overview" class="grid gap-4 lg:h-full {{ $canTimeline ? 'lg:grid-cols-[20rem_1fr]' : 'lg:grid-cols-3' }}">
+        <div class="space-y-4 lg:overflow-y-auto lg:pr-1">
+            <x-card title="Over {{ $employee->first_name }}" class="overflow-visible">
+                <dl class="divide-y divide-slate-100 text-sm">
+                    @if ($canPrivate)
+                        {!! $row('Geslacht', ['male' => 'Man', 'female' => 'Vrouw', 'other' => 'Anders'][$employee->gender] ?? null) !!}
+                        {!! $row('Leeftijd', $employee->date_of_birth ? $employee->date_of_birth->age.' jaar' : null) !!}
+                        {!! $row('Geboortedatum', $employee->date_of_birth?->translatedFormat('d-m-Y')) !!}
+                        {!! $row('Burgerlijke staat', \App\Models\Employee::MARITAL_STATUSES[$employee->marital_status] ?? null) !!}
+                        {!! $row('Nationaliteit', $employee->nationality) !!}
+                        {!! $row('BSN', $employee->bsn) !!}
+                        {!! $row('IBAN', $employee->iban) !!}
+                    @endif
+                    {!! $row('LinkedIn', $employee->linkedin_url) !!}
+                    {!! $row('Twitter', $employee->twitter_url) !!}
+                    {!! $row('Facebook', $employee->facebook_url) !!}
+                </dl>
+                @unless ($canPrivate)<p class="text-sm text-slate-500">Persoonlijke gegevens zijn verborgen voor jouw rechten.</p>@endunless
+            </x-card>
+            @if ($canPrivate)
+            <x-card title="Privé" class="overflow-visible">
+                <dl class="divide-y divide-slate-100 text-sm">
+                    {!! $row('E-mailadres (privé)', $employee->private_email) !!}
+                    {!! $row('Telefoonnummer (privé)', $employee->private_phone) !!}
                     {!! $row('Adres', collect([$employee->street, trim($employee->zipcode.' '.$employee->city), $employee->country])->filter()->implode(', ')) !!}
                     {!! $row('Noodcontact', collect([$employee->emergency_contact_name, $employee->emergency_contact_phone])->filter()->implode(' · ')) !!}
-                @endif
-            </dl>
-        </x-card>
-        <x-card title="Organisatie">
-            <dl class="divide-y divide-slate-100 text-sm">
-                {!! $row('Functie', $employee->job_title) !!}
-                {!! $row('Team', $employee->team?->name) !!}
-                {!! $row('Discipline', $employee->discipline?->name) !!}
-                {!! $row('In dienst', $employee->hired_at?->translatedFormat('d M Y')) !!}
-                {!! $row('Uit dienst', $employee->left_at?->translatedFormat('d M Y')) !!}
-                {!! $row('Reden vertrek', $employee->leave_reason) !!}
-                @if ($employee->manager)
-                    <div class="flex justify-between gap-4 py-2"><dt class="text-slate-500">Leidinggevende</dt><dd class="text-right font-medium">@can('view', $employee->manager)<a href="{{ route('employees.show', $employee->manager) }}" class="text-brand-700 hover:underline">{{ $employee->manager->full_name }}</a>@else{{ $employee->manager->full_name }}@endcan</dd></div>
-                @endif
-            </dl>
-            @if ($employee->directReports->isNotEmpty())
-                <h3 class="mb-1 mt-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Directe medewerkers</h3>
-                <ul class="space-y-1 text-sm">@foreach ($employee->directReports as $report)<li>{{ $report->full_name }}</li>@endforeach</ul>
+                </dl>
+            </x-card>
             @endif
-        </x-card>
-        <x-card title="Persoonlijk">
-            @if ($canPrivate)
-            <dl class="divide-y divide-slate-100 text-sm">
-                {!! $row('Geboortedatum', $employee->date_of_birth?->translatedFormat('d M Y')) !!}
-                {!! $row('Geslacht', ['male' => 'Man', 'female' => 'Vrouw', 'other' => 'Anders'][$employee->gender] ?? null) !!}
-                {!! $row('Nationaliteit', $employee->nationality) !!}
-                {!! $row('BSN', $employee->bsn) !!}
-                {!! $row('IBAN', $employee->iban) !!}
-            </dl>
-            @else
-                <p class="text-sm text-slate-500">Je hebt geen toegang tot de persoonlijke gegevens van deze medewerker.</p>
-            @endif
-        </x-card>
+            <x-card title="Zakelijk" class="overflow-visible">
+                <dl class="divide-y divide-slate-100 text-sm">
+                    {!! $row('E-mailadres (werk)', $employee->email) !!}
+                    {!! $row('Telefoonnummer (werk)', $employee->phone) !!}
+                    {!! $row('Mobiel (werk)', $employee->mobile) !!}
+                    {!! $row('Soort medewerker', $employee->employee_type->label()) !!}
+                    {!! $row('Functie', $employee->job_title) !!}
+                    {!! $row('Teams', $employee->teams->pluck('name')->implode(', ')) !!}
+                    {!! $row('Disciplines', $employee->disciplines->pluck('name')->implode(', ')) !!}
+                    {!! $row('In dienst', $employee->hired_at?->translatedFormat('d M Y')) !!}
+                    {!! $row('Uit dienst', $employee->left_at?->translatedFormat('d M Y')) !!}
+                    {!! $row('Reden vertrek', $employee->leave_reason) !!}
+                    @if ($employee->manager)
+                        <div class="flex justify-between gap-4 py-2"><dt class="text-slate-500">Leidinggevende</dt><dd class="text-right font-medium">@can('view', $employee->manager)<a href="{{ route('employees.show', $employee->manager) }}" class="text-brand-700 hover:underline">{{ $employee->manager->full_name }}</a>@else{{ $employee->manager->full_name }}@endcan</dd></div>
+                    @endif
+                    @if ($employee->person)
+                        <div class="flex justify-between gap-4 py-2"><dt class="text-slate-500">Persoon (CRM)</dt><dd class="text-right font-medium"><a href="{{ route('people.show', $employee->person) }}" class="text-brand-700 hover:underline">Bekijk profiel</a></dd></div>
+                    @endif
+                </dl>
+                @if ($employee->directReports->isNotEmpty())
+                    <h3 class="mb-1 mt-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Directe medewerkers</h3>
+                    <ul class="space-y-1 text-sm">@foreach ($employee->directReports as $report)<li>{{ $report->full_name }}</li>@endforeach</ul>
+                @endif
+            </x-card>
+        </div>
+        @if ($canTimeline)
+            <x-timeline :notes="$employee->notes" :action="route('employees.notes.store', $employee)" :types="$noteTypes" class="mx-auto w-full max-w-3xl lg:h-full" />
+        @endif
     </div>
 
     {{-- Contracten --}}
@@ -165,36 +182,40 @@
         @endcan
     </div>
 
-    {{-- Rooster & tarieven --}}
-    <div data-tab-panel="schedule" class="grid gap-4 lg:h-full lg:grid-cols-2 lg:grid-rows-2">
-        <x-card title="Roosters (op ingangsdatum)" flush>
+    {{-- Rooster --}}
+    <div data-tab-panel="schedule" class="grid gap-4 lg:h-full lg:grid-cols-3">
+        <x-card title="Roosters" flush class="lg:col-span-2">
             <table class="min-w-full text-sm">
-                <thead class="sticky top-0 bg-brand-50"><tr><th class="{{ $th }}">Vanaf</th><th class="{{ $th }}">Type</th><th class="{{ $th }}">Uren/week</th><th></th></tr></thead>
+                <thead class="sticky top-0 bg-brand-50"><tr><th class="{{ $th }}">Begindatum</th><th class="{{ $th }}">Einddatum</th><th class="{{ $th }}">Rooster</th><th class="{{ $th }} text-right">Kostprijs</th><th class="{{ $th }} text-right">Verkooptarief</th><th></th></tr></thead>
                 <tbody class="divide-y divide-slate-100">
                 @forelse ($employee->schedules as $schedule)
                     <tr class="align-top">
-                        <td class="px-4 py-2.5">{{ $fmt($schedule->effective_from) }}
+                        <td class="whitespace-nowrap px-4 py-2.5">{{ $fmt($schedule->effective_from) }}
                             @if ($currentSchedule?->is($schedule))<span class="ml-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">Huidig</span>@elseif ($schedule->effective_from->isFuture())<span class="ml-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">Gepland</span>@endif</td>
-                        <td class="px-4 py-2.5">{{ $schedule->alternating ? 'Even/oneven weken' : 'Elke week' }}</td>
+                        <td class="whitespace-nowrap px-4 py-2.5">{{ ($end = $employee->scheduleEnd($schedule)) ? $fmt($end) : '' }}</td>
                         <td class="px-4 py-2.5">
-                            {{ $num($schedule->weeklyHours('odd')) }}@if ($schedule->alternating) / {{ $num($schedule->weeklyHours('even')) }}@endif
-                            <div class="text-xs text-slate-500">@foreach ($schedule->pattern['odd'] ?? [] as $d => $day){{ substr($weekdays[$d], 0, 2) }} {{ $day['start'] }}–{{ $day['end'] }}{{ ! $loop->last ? ', ' : '' }}@endforeach</div></td>
+                            {{ number_format($schedule->weeklyHours('odd'), 2, ',', '.') }}@if ($schedule->alternating) / {{ number_format($schedule->weeklyHours('even'), 2, ',', '.') }}@endif uur per week
+                            <div class="text-xs text-slate-500">{{ $schedule->alternating ? 'Even/oneven afwijkend · ' : '' }}@foreach ($schedule->pattern['odd'] ?? [] as $d => $day){{ substr($weekdays[$d], 0, 2) }} {{ $day['start'] }}–{{ $day['end'] }}{{ ! $loop->last ? ', ' : '' }}@endforeach</div></td>
+                        <td class="whitespace-nowrap px-4 py-2.5 text-right">{{ $schedule->cost_rate !== null ? '€ '.number_format($schedule->cost_rate, 2, ',', '.') : '—' }}</td>
+                        <td class="whitespace-nowrap px-4 py-2.5 text-right">{{ $schedule->sales_rate !== null ? '€ '.number_format($schedule->sales_rate, 2, ',', '.') : '—' }}</td>
                         <td class="px-4 py-2.5 text-right">@can('manageContracts', $employee)<form method="POST" action="{{ route('employees.schedules.destroy', [$employee, $schedule]) }}" onsubmit="return confirm('Dit rooster verwijderen?')">@csrf @method('DELETE')<button class="text-xs text-rose-600 hover:underline">Verwijderen</button></form>@endcan</td>
                     </tr>
                 @empty
-                    <tr><td colspan="4" class="px-4 py-8 text-center text-slate-500">Nog geen rooster.</td></tr>
+                    <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Nog geen rooster.</td></tr>
                 @endforelse
                 </tbody>
             </table>
         </x-card>
         @can('manageContracts', $employee)
-        <x-card title="Nieuw rooster" class="lg:row-span-2">
+        <x-card title="Nieuw rooster">
             <form method="POST" action="{{ route('employees.schedules.store', $employee) }}" class="space-y-3" data-schedule>
                 @csrf
-                <div class="flex flex-wrap items-end gap-4">
-                    <x-field name="effective_from" label="Ingangsdatum" type="date" :value="today()->format('Y-m-d')" required />
-                    <label class="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" name="alternating" value="1" data-reveal="even-week" @checked(old('alternating')) class="rounded border-slate-300 text-brand-600"> Even en oneven weken verschillend</label>
+                <div class="grid grid-cols-3 gap-3">
+                    <x-field name="effective_from" label="Begindatum" type="date" :value="today()->format('Y-m-d')" required />
+                    <x-field name="cost_rate" label="Kostprijs" type="number" step="0.01" min="0" required placeholder="€" />
+                    <x-field name="sales_rate" label="Verkooptarief" type="number" step="0.01" min="0" required placeholder="€" />
                 </div>
+                <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="alternating" value="1" data-reveal="even-week" @checked(old('alternating')) class="rounded border-slate-300 text-brand-600"> Oneven en even weken afwijkend</label>
                 @error('days')<p class="text-xs text-rose-600">{{ $message }}</p>@enderror
                 @foreach (['odd' => 'Oneven weken (of elke week)', 'even' => 'Even weken'] as $week => $weekLabel)
                     <fieldset @if ($week === 'even') id="even-week" @endif>
@@ -211,60 +232,48 @@
                         </div>
                     </fieldset>
                 @endforeach
-                <p class="text-xs text-slate-500">Laat een dag leeg voor een vrije dag. Pauze in minuten. Een rooster met een toekomstige ingangsdatum wordt automatisch actief op die datum.</p>
+                <p class="text-xs text-slate-500">Laat een dag leeg voor een vrije dag; pauze in minuten. De einddatum volgt automatisch uit de begindatum van het volgende rooster, zodat toekomstige wijzigingen vanzelf ingaan.</p>
                 <button class="{{ $btn }}">Rooster opslaan</button>
             </form>
         </x-card>
         @endcan
-        <x-card title="Uurtarieven (op ingangsdatum)" flush>
-            <table class="min-w-full text-sm">
-                <thead class="sticky top-0 bg-brand-50"><tr><th class="{{ $th }}">Vanaf</th><th class="{{ $th }}">Kostprijs/u</th><th class="{{ $th }}">Verkooptarief/u</th><th></th></tr></thead>
-                <tbody class="divide-y divide-slate-100">
-                @forelse ($employee->rates as $rate)
-                    <tr>
-                        <td class="px-4 py-2.5">{{ $fmt($rate->effective_from) }}
-                            @if ($currentRate?->is($rate))<span class="ml-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">Huidig</span>@elseif ($rate->effective_from->isFuture())<span class="ml-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">Gepland</span>@endif</td>
-                        <td class="px-4 py-2.5">€ {{ number_format($rate->cost_rate, 2, ',', '.') }}</td>
-                        <td class="px-4 py-2.5">€ {{ number_format($rate->sales_rate, 2, ',', '.') }}</td>
-                        <td class="px-4 py-2.5 text-right">@can('manageContracts', $employee)<form method="POST" action="{{ route('employees.rates.destroy', [$employee, $rate]) }}" onsubmit="return confirm('Dit tarief verwijderen?')">@csrf @method('DELETE')<button class="text-xs text-rose-600 hover:underline">Verwijderen</button></form>@endcan</td>
-                    </tr>
-                @empty
-                    <tr><td colspan="4" class="px-4 py-8 text-center text-slate-500">Nog geen tarieven.</td></tr>
-                @endforelse
-                </tbody>
-            </table>
-            @can('manageContracts', $employee)
-            <form method="POST" action="{{ route('employees.rates.store', $employee) }}" class="sticky bottom-0 flex flex-wrap items-end gap-3 border-t border-slate-100 bg-white p-4">
-                @csrf
-                <x-field name="effective_from" label="Ingangsdatum" type="date" :keep="false" required class="w-40" />
-                <x-field name="cost_rate" label="Kostprijs" type="number" step="0.01" min="0" required class="w-28" />
-                <x-field name="sales_rate" label="Verkoop" type="number" step="0.01" min="0" required class="w-28" />
-                <button class="{{ $btn }}">Toevoegen</button>
-            </form>
-            @endcan
-        </x-card>
     </div>
     @endif
 
     {{-- Verlof --}}
     @if ($canLeave)
     <div data-tab-panel="leave" class="grid gap-4 lg:h-full lg:grid-cols-3 lg:grid-rows-[auto_1fr]">
-        <div class="grid grid-cols-2 gap-3 lg:col-span-3 lg:grid-cols-4">
-            @foreach ([['Saldo vakantie-uren', $balances['vacation']], ['Saldo tijd-voor-tijd', $balances['tvt']]] as [$label, $value])
-                <div class="rounded-2xl bg-white px-5 py-3 shadow-sm ring-1 ring-slate-200"><div class="text-2xl font-semibold {{ $value < 0 ? 'text-rose-600' : 'text-ink' }}">{{ $num($value) }} u</div><div class="text-xs text-slate-500">{{ $label }}</div></div>
+        @php
+            $now = today();
+            $vac = \App\Enums\BalanceKind::Vacation;
+            $tvtKind = \App\Enums\BalanceKind::TimeForTime;
+            $summary = [
+                ['Huidig saldo', $employee->balanceAsOf($vac, $now)],
+                ['Gepland verlof', $employee->plannedHours($vac)],
+                ['Saldo einde jaar', $employee->balanceAsOf($vac, $now->copy()->endOfYear())],
+                ['Tijd-voor-tijd', $employee->balanceAsOf($tvtKind, $now)],
+            ];
+        @endphp
+        <div class="grid grid-cols-2 gap-3 lg:col-span-3 lg:grid-cols-5">
+            @foreach ($summary as [$label, $value])
+                <div class="rounded-2xl bg-white px-5 py-3 shadow-sm ring-1 ring-slate-200">
+                    <div class="text-xs text-slate-500">{{ $label }}</div>
+                    <div class="text-xl font-semibold {{ $value < 0 ? 'text-rose-600' : 'text-ink' }}">{{ $num($value) }} uur</div>
+                    <div class="text-sm text-slate-500">{{ $num($employee->toDays($value)) }} dagen</div>
+                </div>
             @endforeach
-            <div class="rounded-2xl bg-white px-5 py-3 shadow-sm ring-1 ring-slate-200"><div class="text-2xl font-semibold">{{ $employee->leaveRequests->where('status', \App\Enums\LeaveStatus::Pending)->count() }}</div><div class="text-xs text-slate-500">Aanvragen in afwachting</div></div>
-            <div class="rounded-2xl bg-white px-5 py-3 shadow-sm ring-1 ring-slate-200"><div class="text-2xl font-semibold">{{ $currentSchedule ? $num($currentSchedule->weeklyHours('odd')) : '—' }} u</div><div class="text-xs text-slate-500">Werkuren per week</div></div>
+            <div class="rounded-2xl bg-white px-5 py-3 shadow-sm ring-1 ring-slate-200"><div class="text-xs text-slate-500">Aanvragen in afwachting</div><div class="text-xl font-semibold">{{ $employee->leaveRequests->where('status', \App\Enums\LeaveStatus::Pending)->count() }}</div><div class="text-sm text-slate-500">{{ $currentSchedule ? $num($currentSchedule->weeklyHours('odd')) : '—' }} u per week</div></div>
         </div>
         <x-card title="Verlofaanvragen" flush class="lg:col-span-2">
             <table class="min-w-full text-sm">
-                <thead class="sticky top-0 bg-brand-50"><tr><th class="{{ $th }}">Periode</th><th class="{{ $th }}">Soort</th><th class="{{ $th }}">Uren</th><th class="{{ $th }}">Status</th><th></th></tr></thead>
+                <thead class="sticky top-0 bg-brand-50"><tr><th class="{{ $th }}">Periode</th><th class="{{ $th }}">Soort</th><th class="{{ $th }}">Uren</th><th class="{{ $th }}">Dagen</th><th class="{{ $th }}">Status</th><th></th></tr></thead>
                 <tbody class="divide-y divide-slate-100">
                 @forelse ($employee->leaveRequests as $request)
                     <tr class="align-top">
                         <td class="px-4 py-2.5">{{ $fmt($request->start_date) }} – {{ $fmt($request->end_date) }}@if ($request->note)<div class="text-xs text-slate-500">{{ $request->note }}</div>@endif</td>
                         <td class="px-4 py-2.5">{{ $request->leaveType->name }}</td>
                         <td class="px-4 py-2.5">{{ $num($request->hours) }}</td>
+                        <td class="px-4 py-2.5">{{ $num($employee->toDays((float) $request->hours)) }}</td>
                         <td class="px-4 py-2.5"><span class="rounded-full px-2 py-0.5 text-xs font-medium {{ ['pending' => 'bg-amber-50 text-amber-700', 'approved' => 'bg-emerald-50 text-emerald-700', 'rejected' => 'bg-rose-50 text-rose-700', 'cancelled' => 'bg-slate-100 text-slate-600'][$request->status->value] }}">{{ $request->status->label() }}</span>
                             @if ($request->decision_note)<div class="mt-1 text-xs text-slate-500">{{ $request->decision_note }}</div>@endif</td>
                         <td class="px-4 py-2.5 text-right">
@@ -274,7 +283,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">Nog geen verlofaanvragen.</td></tr>
+                    <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Nog geen verlofaanvragen.</td></tr>
                 @endforelse
                 </tbody>
             </table>
@@ -324,15 +333,22 @@
     {{-- Verzuim --}}
     @if ($canAbsence)
     <div data-tab-panel="absence" class="grid gap-4 lg:h-full lg:grid-cols-3">
-        <x-card title="Ziekte en verzuim" flush class="lg:col-span-2">
+        <div class="space-y-4 lg:col-span-2 lg:flex lg:min-h-0 lg:flex-col">
+        <div class="grid shrink-0 grid-cols-2 gap-3 sm:grid-cols-4">
+            @foreach ([['Verzuim vorig jaar', now()->year - 1], ['Verzuim dit jaar', now()->year]] as [$label, $year])
+                <div class="rounded-2xl bg-white px-5 py-3 shadow-sm ring-1 ring-slate-200"><div class="text-xs text-slate-500">{{ $label }}</div><div class="text-xl font-semibold">{{ $num($employee->absenceStats($year)['hours']) }} uur</div><div class="text-sm text-slate-500">{{ $num($employee->absenceStats($year)['percentage']) }}%</div></div>
+            @endforeach
+        </div>
+        <x-card title="Ziekte en verzuim" flush class="lg:flex-1">
             <table class="min-w-full text-sm">
-                <thead class="sticky top-0 bg-brand-50"><tr><th class="{{ $th }}">Periode</th><th class="{{ $th }}">Soort</th><th class="{{ $th }}">%</th><th></th></tr></thead>
+                <thead class="sticky top-0 bg-brand-50"><tr><th class="{{ $th }}">Periode</th><th class="{{ $th }}">Soort</th><th class="{{ $th }}">%</th><th class="{{ $th }}">Uren</th><th></th></tr></thead>
                 <tbody class="divide-y divide-slate-100">
                 @forelse ($employee->absences as $absence)
                     <tr class="align-top">
                         <td class="px-4 py-2.5">{{ $fmt($absence->start_date) }} – {{ $absence->end_date ? $fmt($absence->end_date) : 'lopend' }}@if ($absence->note)<div class="text-xs text-slate-500">{{ $absence->note }}</div>@endif</td>
                         <td class="px-4 py-2.5">{{ $absence->type->label() }}</td>
                         <td class="px-4 py-2.5">{{ $absence->percentage }}%</td>
+                        <td class="px-4 py-2.5">{{ $num($employee->scheduledHours($absence->start_date, $absence->end_date ?? today()) * $absence->percentage / 100) }}</td>
                         <td class="px-4 py-2.5 text-right">
                             @can('manageAbsence', $employee)
                                 @if ($absence->isOngoing())
@@ -346,11 +362,12 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="4" class="px-4 py-8 text-center text-slate-500">Geen verzuim geregistreerd.</td></tr>
+                    <tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">Geen verzuim geregistreerd.</td></tr>
                 @endforelse
                 </tbody>
             </table>
         </x-card>
+        </div>
         @can('manageAbsence', $employee)
         <x-card title="Ziek- of verzuimmelding">
             <form method="POST" action="{{ route('absences.store') }}" class="space-y-3">
@@ -367,68 +384,9 @@
     </div>
     @endif
 
-    {{-- Dossier --}}
+    {{-- Personeelsdossier --}}
     @if ($canFile)
-    <div data-tab-panel="file" class="grid gap-4 lg:h-full lg:grid-cols-3">
-        <x-card title="Digitaal personeelsdossier" flush class="lg:col-span-2">
-            <table class="min-w-full text-sm">
-                <thead class="sticky top-0 bg-brand-50"><tr><th class="{{ $th }}">Titel</th><th class="{{ $th }}">Categorie</th><th class="{{ $th }}">Toegevoegd</th><th></th></tr></thead>
-                <tbody class="divide-y divide-slate-100">
-                @forelse ($employee->documents as $document)
-                    <tr>
-                        <td class="px-4 py-2.5"><a href="{{ route('employees.documents.show', [$employee, $document]) }}" class="font-medium text-brand-700 hover:underline">{{ $document->title }}</a><div class="text-xs text-slate-500">{{ $document->original_name }} · {{ number_format($document->size / 1024, 0, ',', '.') }} kB</div></td>
-                        <td class="px-4 py-2.5">{{ $document->category->label() }}</td>
-                        <td class="px-4 py-2.5">{{ $fmt($document->created_at) }}<div class="text-xs text-slate-500">{{ $document->uploader?->name }}</div></td>
-                        <td class="px-4 py-2.5 text-right">@can('manageDocuments', $employee)<form method="POST" action="{{ route('employees.documents.destroy', [$employee, $document]) }}" onsubmit="return confirm('Dit document verwijderen?')">@csrf @method('DELETE')<button class="text-xs text-rose-600 hover:underline">Verwijderen</button></form>@endcan</td>
-                    </tr>
-                @empty
-                    <tr><td colspan="4" class="px-4 py-8 text-center text-slate-500">Nog geen documenten.</td></tr>
-                @endforelse
-                </tbody>
-            </table>
-        </x-card>
-        @can('manageDocuments', $employee)
-        <x-card title="Document toevoegen">
-            <form method="POST" action="{{ route('employees.documents.store', $employee) }}" enctype="multipart/form-data" class="space-y-3">
-                @csrf
-                <x-select name="category" label="Categorie" :options="$documentCategories" />
-                <x-field name="title" label="Titel" required />
-                <div><label class="mb-1 block text-sm font-medium text-slate-700">Bestand</label>
-                    <input type="file" name="file" required class="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:font-medium hover:file:bg-slate-200">
-                    @error('file')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
-                    <p class="mt-1 text-xs text-slate-500">PDF, afbeelding, Word of Excel, max. 10 MB.</p></div>
-                <button class="{{ $btn }}">Uploaden</button>
-            </form>
-        </x-card>
-        @endcan
-    </div>
-    @endif
-
-    {{-- Tijdlijn --}}
-    @if ($canTimeline)
-    <div data-tab-panel="timeline" class="grid gap-4 lg:h-full lg:grid-cols-3">
-        <x-card title="Tijdlijn" class="lg:col-span-2">
-            <ul class="space-y-3">
-                @forelse ($employee->notes as $note)
-                    <li class="rounded-lg bg-slate-50 p-3">
-                        <div class="mb-1 flex items-center justify-between text-xs"><span class="rounded-full bg-brand-100 px-2 py-0.5 font-medium text-brand-700">{{ \App\Enums\NoteType::tryFrom($note->type)?->label() ?? 'Notitie' }}</span><span class="text-slate-500">{{ $note->author?->name ?? 'Onbekend' }} · {{ $note->created_at->translatedFormat('d M Y H:i') }}</span></div>
-                        <p class="whitespace-pre-line text-sm">{{ $note->body }}</p>
-                        <form method="POST" action="{{ route('notes.destroy', $note) }}" onsubmit="return confirm('Deze notitie verwijderen?')" class="mt-1 text-right">@csrf @method('DELETE')<button class="text-xs text-rose-600 hover:underline">Verwijderen</button></form>
-                    </li>
-                @empty
-                    <li class="text-sm text-slate-500">Nog geen notities of correspondentie.</li>
-                @endforelse
-            </ul>
-        </x-card>
-        <x-card title="Toevoegen">
-            <form method="POST" action="{{ route('employees.notes.store', $employee) }}" class="space-y-3">
-                @csrf
-                <x-select name="type" label="Soort" :options="$noteTypes" />
-                <div><label class="mb-1 block text-sm font-medium text-slate-700">Bericht</label><textarea name="body" rows="5" required class="{{ $input }}">{{ old('body') }}</textarea>@error('body')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror</div>
-                <button class="{{ $btn }}">Toevoegen</button>
-            </form>
-        </x-card>
-    </div>
+    <x-documents data-tab-panel="file" class="lg:h-full" :documents="$employee->documents" :action="route('employees.documents.store', $employee)" :categories="$documentCategories" :can-manage="$me->can('manageDocuments', $employee)" />
     @endif
 
     {{-- Toegang --}}

@@ -14,7 +14,7 @@
     </a>
     <nav class="flex items-center gap-1 text-sm font-medium">
         @php
-            $tabs = [['organizations.index', 'organizations.*', 'Bedrijven'], ['people.index', 'people.*', 'Personen']];
+            $tabs = [['organizations.index', 'organizations.*', 'Bedrijven'], ['people.index', 'people.*', 'Personen'], ['debtors.index', 'debtors.*', 'Debiteuren']];
             $hrUrl = auth()->user()->can('viewAny', \App\Models\Employee::class)
                 ? route('employees.index')
                 : (auth()->user()->employee ? route('employees.show', auth()->user()->employee) : null);
