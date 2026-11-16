@@ -122,6 +122,48 @@ document.addEventListener('click', (event) => {
     }
 });
 
+document.addEventListener('click', (event) => {
+    const add = event.target.closest('[data-add-row]');
+
+    if (!add) {
+        return;
+    }
+
+    const body = add.closest('[data-rows]').querySelector('[data-rows-body]');
+    const last = body.lastElementChild;
+    const index = body.children.length;
+    const row = last.cloneNode(true);
+
+    row.querySelectorAll('input, select').forEach((field) => {
+        field.name = field.name.replace(/\[\d+\]/, `[${index}]`);
+        field.value = '';
+    });
+
+    body.appendChild(row);
+});
+
+document.addEventListener('change', (event) => {
+    if (event.target.matches('[data-method-select]')) {
+        const show = ['fixed_price', 'subscription'].includes(event.target.value);
+        document.querySelector('[data-price-field]')?.classList.toggle('hidden', !show);
+    }
+
+    if (event.target.matches('[data-default-service]')) {
+        const option = event.target.selectedOptions[0];
+        const name = document.getElementById('name');
+        const method = document.getElementById('invoice_method');
+
+        if (option?.dataset.name && name && !name.value) {
+            name.value = option.dataset.name;
+        }
+
+        if (option?.dataset.method && method) {
+            method.value = option.dataset.method;
+            method.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+});
+
 function filterDocuments(root) {
     const query = root.querySelector('[data-doc-q]').value.trim().toLowerCase();
     const ext = root.querySelector('[data-doc-ext]').value;

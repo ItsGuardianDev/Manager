@@ -7,6 +7,7 @@ use App\Models\Document;
 use App\Models\Employee;
 use App\Models\Organization;
 use App\Models\Person;
+use App\Models\Project;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -32,6 +33,13 @@ class DocumentController extends Controller
     public function storeForPerson(Request $request, Person $person): RedirectResponse
     {
         return $this->store($request, $person, redirect()->route('people.show', [$person, 'tab' => 'documents']), false);
+    }
+
+    public function storeForProject(Request $request, Project $project): RedirectResponse
+    {
+        Gate::authorize('projects.edit');
+
+        return $this->store($request, $project, redirect()->route('projects.show', [$project, 'tab' => 'documents']), false);
     }
 
     public function show(Document $document): StreamedResponse
@@ -87,6 +95,10 @@ class DocumentController extends Controller
 
         if ($subject instanceof Employee) {
             Gate::authorize($manage ? 'manageDocuments' : 'viewDocuments', $subject);
+        }
+
+        if ($subject instanceof Project) {
+            Gate::authorize($manage ? 'projects.edit' : 'projects.view');
         }
 
         return $subject;

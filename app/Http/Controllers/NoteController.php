@@ -7,6 +7,7 @@ use App\Models\Employee;
 use App\Models\Note;
 use App\Models\Organization;
 use App\Models\Person;
+use App\Models\Project;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -32,6 +33,13 @@ class NoteController extends Controller
         Gate::authorize('addNote', $employee);
 
         return $this->store($request, $employee, ['employees.show', [$employee, 'tab' => 'timeline']]);
+    }
+
+    public function storeForProject(Request $request, Project $project): RedirectResponse
+    {
+        Gate::authorize('projects.edit');
+
+        return $this->store($request, $project, ['projects.show', [$project, 'tab' => 'timeline']]);
     }
 
     public function attachment(Note $note): StreamedResponse
@@ -62,6 +70,10 @@ class NoteController extends Controller
     {
         if ($note->noteable instanceof Employee) {
             Gate::authorize('viewNotes', $note->noteable);
+        }
+
+        if ($note->noteable instanceof Project) {
+            Gate::authorize(request()->isMethod('DELETE') ? 'projects.edit' : 'projects.view');
         }
     }
 

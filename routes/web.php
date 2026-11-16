@@ -16,13 +16,20 @@ use App\Http\Controllers\LeaveBalanceController;
 use App\Http\Controllers\LeaveReportController;
 use App\Http\Controllers\LeaveRequestController;
 use App\Http\Controllers\NoteController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationImportExportController;
 use App\Http\Controllers\OrganizationPersonController;
 use App\Http\Controllers\PersonController;
 use App\Http\Controllers\PersonImportExportController;
 use App\Http\Controllers\PreferenceController;
+use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\ProjectImportExportController;
+use App\Http\Controllers\ProjectLookupController;
+use App\Http\Controllers\ProjectServiceController;
+use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\TeamController;
+use App\Http\Controllers\TimeEntryController;
 use App\Http\Controllers\UserGroupController;
 use App\Http\Controllers\WorkScheduleController;
 use Illuminate\Support\Facades\Route;
@@ -107,6 +114,45 @@ Route::middleware('auth')->group(function () {
     Route::get('documents/{document}', [DocumentController::class, 'show'])->name('documents.show');
     Route::delete('documents/{document}', [DocumentController::class, 'destroy'])->name('documents.destroy');
     Route::get('notes/{note}/attachment', [NoteController::class, 'attachment'])->name('notes.attachment');
+
+    // Projects
+    Route::get('projects/export', [ProjectImportExportController::class, 'export'])->name('projects.export');
+    Route::get('projects/import', [ProjectImportExportController::class, 'form'])->name('projects.import');
+    Route::post('projects/import', [ProjectImportExportController::class, 'import'])->name('projects.import.store');
+    Route::get('projects/import/template', [ProjectImportExportController::class, 'template'])->name('projects.import.template');
+    Route::resource('projects', ProjectController::class)->only(['index', 'store', 'show', 'update']);
+
+    Route::prefix('projects/{project}')->name('projects.')->scopeBindings()->group(function () {
+        Route::post('close', [ProjectController::class, 'close'])->name('close');
+        Route::patch('reopen', [ProjectController::class, 'reopen'])->name('reopen');
+        Route::post('copy', [ProjectController::class, 'copy'])->name('copy');
+        Route::get('services/create', [ProjectServiceController::class, 'create'])->name('services.create');
+        Route::post('services', [ProjectServiceController::class, 'store'])->name('services.store');
+        Route::get('services/{service}/edit', [ProjectServiceController::class, 'edit'])->name('services.edit');
+        Route::put('services/{service}', [ProjectServiceController::class, 'update'])->name('services.update');
+        Route::delete('services/{service}', [ProjectServiceController::class, 'destroy'])->name('services.destroy');
+        Route::patch('services/{service}/toggle-active', [ProjectServiceController::class, 'toggleActive'])->name('services.toggle-active');
+        Route::patch('services/{service}/progress', [ProjectServiceController::class, 'progress'])->name('services.progress');
+        Route::patch('services/{service}/move', [ProjectServiceController::class, 'move'])->name('services.move');
+        Route::post('hours', [TimeEntryController::class, 'store'])->name('hours.store');
+        Route::delete('hours/{timeEntry}', [TimeEntryController::class, 'destroy'])->name('hours.destroy');
+        Route::post('notes', [NoteController::class, 'storeForProject'])->name('notes.store');
+        Route::post('documents', [DocumentController::class, 'storeForProject'])->name('documents.store');
+    });
+
+    Route::get('purchases', [PurchaseController::class, 'index'])->name('purchases.index');
+    Route::get('purchases/create', [PurchaseController::class, 'create'])->name('purchases.create');
+    Route::post('purchases', [PurchaseController::class, 'store'])->name('purchases.store');
+    Route::patch('purchases/{purchase}/process', [PurchaseController::class, 'process'])->name('purchases.process');
+    Route::delete('purchases/{purchase}', [PurchaseController::class, 'destroy'])->name('purchases.destroy');
+
+    Route::get('project-settings', [ProjectLookupController::class, 'index'])->name('project-settings.index');
+    Route::post('project-settings/{type}', [ProjectLookupController::class, 'store'])->name('project-settings.store');
+    Route::put('project-settings/{type}/{id}', [ProjectLookupController::class, 'update'])->name('project-settings.update');
+    Route::delete('project-settings/{type}/{id}', [ProjectLookupController::class, 'destroy'])->name('project-settings.destroy');
+
+    Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::post('notifications/read-all', [NotificationController::class, 'readAll'])->name('notifications.read-all');
 
     Route::delete('notes/{note}', [NoteController::class, 'destroy'])->name('notes.destroy');
 });

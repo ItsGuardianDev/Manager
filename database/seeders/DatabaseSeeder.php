@@ -4,11 +4,14 @@ namespace Database\Seeders;
 
 use App\Enums\BalanceKind;
 use App\Enums\LedgerReason;
+use App\Models\CostType;
 use App\Models\Discipline;
 use App\Models\Employee;
+use App\Models\HourType;
 use App\Models\LeaveType;
 use App\Models\Organization;
 use App\Models\Person;
+use App\Models\Project;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\UserGroup;
@@ -43,6 +46,38 @@ class DatabaseSeeder extends Seeder
 
         if (app()->isLocal() && Employee::count() === 0) {
             $this->seedEmployees($admin);
+        }
+
+        if (app()->isLocal() && Project::count() === 0) {
+            $this->seedProjects();
+        }
+    }
+
+    private function seedProjects(): void
+    {
+        $manager = Employee::where('email', 'admin@example.com')->first();
+        $organizations = Organization::inRandomOrder()->limit(4)->get();
+        $architect = HourType::where('name', 'Architect')->first();
+        $drawer = HourType::where('name', 'Tekenaar')->first();
+        $outsourcing = CostType::where('name', 'Inhuur derden')->first();
+
+        foreach (['Nieuwbouw Ijburg', 'Hoofdkantoor Nederland', 'Ontwerp stadion', 'Renovatie Bajeskwartier'] as $index => $name) {
+            $project = Project::create([
+                'number' => (string) (1001 + $index), 'name' => $name, 'organization_id' => $organizations[$index]->id,
+                'manager_id' => $manager?->id, 'start_date' => now()->subMonths(2), 'is_invoiceable' => true,
+            ]);
+
+            $service = $project->services()->create(['name' => 'Schetsontwerp', 'invoice_method' => 'fixed_price', 'price' => 45050, 'sort_order' => 1, 'completion_percentage' => 40]);
+            $service->hourLines()->create(['hour_type_id' => $architect->id, 'hours' => 120, 'rate' => 125]);
+            $service->hourLines()->create(['hour_type_id' => $drawer->id, 'hours' => 80, 'rate' => 95]);
+            $service->costLines()->create(['cost_type_id' => $outsourcing->id, 'quantity' => 1, 'purchase_price' => 20000, 'margin_percentage' => 0]);
+
+            $second = $project->services()->create(['name' => 'Definitief ontwerp', 'invoice_method' => 'after_calculation', 'sort_order' => 2]);
+            $second->hourLines()->create(['hour_type_id' => $architect->id, 'hours' => 200, 'rate' => 125]);
+
+            if ($manager && $index < 3) {
+                $project->timeEntries()->create(['employee_id' => $manager->id, 'project_service_id' => $service->id, 'hour_type_id' => $architect->id, 'date' => now()->subDays(5 + $index), 'hours' => 30 + $index * 60, 'rate' => 125, 'note' => 'Schetsen']);
+            }
         }
     }
 

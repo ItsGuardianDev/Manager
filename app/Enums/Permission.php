@@ -17,6 +17,8 @@ enum Permission: string
     case AbsenceManage = 'absence.manage';
     case ReportsView = 'reports.view';
     case AccessManage = 'access.manage';
+    case ProjectsView = 'projects.view';
+    case ProjectsEdit = 'projects.edit';
 
     public function label(): string
     {
@@ -34,6 +36,8 @@ enum Permission: string
             self::AbsenceManage => 'Ziekte en verzuim registreren',
             self::ReportsView => 'Verlof- en verzuimrapportages bekijken',
             self::AccessManage => 'Gebruikersgroepen, rechten en uitnodigingen beheren',
+            self::ProjectsView => 'Projecten bekijken',
+            self::ProjectsEdit => 'Projecten, diensten, uren en inkoop beheren',
         };
     }
 

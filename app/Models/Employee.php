@@ -94,6 +94,11 @@ class Employee extends Model
         return $this->belongsTo(self::class, 'manager_id');
     }
 
+    public function managedProjects(): HasMany
+    {
+        return $this->hasMany(Project::class, 'manager_id');
+    }
+
     public function directReports(): HasMany
     {
         return $this->hasMany(self::class, 'manager_id');

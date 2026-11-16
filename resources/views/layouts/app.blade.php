@@ -22,11 +22,19 @@
         @foreach ($tabs as [$route, $match, $label])
             <a href="{{ route($route) }}" class="rounded-full px-4 py-1.5 {{ request()->routeIs($match) ? 'bg-brand-500 text-white' : 'text-slate-300 hover:bg-white/10' }}">{{ $label }}</a>
         @endforeach
+        @can('projects.view')
+            <a href="{{ route('projects.index') }}" class="rounded-full px-4 py-1.5 {{ request()->routeIs('projects.*', 'purchases.*', 'project-settings.*') ? 'bg-brand-500 text-white' : 'text-slate-300 hover:bg-white/10' }}">Projecten</a>
+        @endcan
         @if ($hrUrl)
             <a href="{{ $hrUrl }}" class="rounded-full px-4 py-1.5 {{ request()->routeIs('employees.*', 'leave-requests.*', 'absences.*', 'collective-leave.*', 'reports.*', 'teams.*', 'disciplines.*', 'user-groups.*') ? 'bg-brand-500 text-white' : 'text-slate-300 hover:bg-white/10' }}">Medewerkers</a>
         @endif
     </nav>
-    <details class="relative ml-auto">
+    @php($unreadNotifications = auth()->user()->unreadNotifications()->count())
+    <a href="{{ route('notifications.index') }}" class="relative ml-auto grid size-9 place-items-center rounded-full hover:bg-white/10" title="Meldingen" aria-label="Meldingen">
+        <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8Z"/><path d="M10 21h4"/></svg>
+        @if ($unreadNotifications > 0)<span class="absolute right-0.5 top-0.5 grid min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold leading-4">{{ $unreadNotifications }}</span>@endif
+    </a>
+    <details class="relative">
         <summary class="flex cursor-pointer list-none items-center gap-2 rounded-full py-1 pl-1 pr-3 hover:bg-white/10">
             <span class="grid size-8 place-items-center rounded-full bg-white/15 text-xs font-semibold">{{ strtoupper(substr(auth()->user()->name, 0, 1)) }}</span>
             <span class="hidden text-sm sm:inline">{{ auth()->user()->name }}</span>
