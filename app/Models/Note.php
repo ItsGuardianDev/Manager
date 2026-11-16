@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
-#[Fillable(['body', 'user_id'])]
+#[Fillable(['body', 'user_id', 'type'])]
 class Note extends Model
 {
     use HasFactory;

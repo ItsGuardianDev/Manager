@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>@yield('title', 'Bedrijven & Personen') · {{ config('app.name') }}</title>
+    <title>@yield('title', 'CRM') · {{ config('app.name') }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="flex min-h-full flex-col text-ink antialiased lg:h-full lg:overflow-hidden">
@@ -13,9 +13,18 @@
         <span class="font-semibold tracking-tight">CRM</span>
     </a>
     <nav class="flex items-center gap-1 text-sm font-medium">
-        @foreach ([['organizations.index', 'organizations.*', 'Bedrijven'], ['people.index', 'people.*', 'Personen']] as [$route, $match, $label])
+        @php
+            $tabs = [['organizations.index', 'organizations.*', 'Bedrijven'], ['people.index', 'people.*', 'Personen']];
+            $hrUrl = auth()->user()->can('viewAny', \App\Models\Employee::class)
+                ? route('employees.index')
+                : (auth()->user()->employee ? route('employees.show', auth()->user()->employee) : null);
+        @endphp
+        @foreach ($tabs as [$route, $match, $label])
             <a href="{{ route($route) }}" class="rounded-full px-4 py-1.5 {{ request()->routeIs($match) ? 'bg-brand-500 text-white' : 'text-slate-300 hover:bg-white/10' }}">{{ $label }}</a>
         @endforeach
+        @if ($hrUrl)
+            <a href="{{ $hrUrl }}" class="rounded-full px-4 py-1.5 {{ request()->routeIs('employees.*', 'leave-requests.*', 'absences.*', 'collective-leave.*', 'reports.*', 'teams.*', 'disciplines.*', 'user-groups.*') ? 'bg-brand-500 text-white' : 'text-slate-300 hover:bg-white/10' }}">Medewerkers</a>
+        @endif
     </nav>
     <details class="relative ml-auto">
         <summary class="flex cursor-pointer list-none items-center gap-2 rounded-full py-1 pl-1 pr-3 hover:bg-white/10">

@@ -35,9 +35,11 @@ function selectTab(root, name) {
 
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('[data-tabs]').forEach((root) => {
-        const withError = root.querySelector('[data-tab-panel] .text-rose-600');
+        const withError = root.querySelector('[data-tab-panel] p.text-rose-600');
         const first = root.querySelector('[data-tab-target]')?.dataset.tabTarget;
-        selectTab(root, withError?.closest('[data-tab-panel]').dataset.tabPanel ?? first);
+        const requested = root.dataset.initial;
+        const exists = requested && root.querySelector(`[data-tab-target="${requested}"]`);
+        selectTab(root, withError?.closest('[data-tab-panel]').dataset.tabPanel ?? (exists ? requested : first));
     });
 
     const toast = document.getElementById('toast');
