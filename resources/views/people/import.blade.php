@@ -1,0 +1,24 @@
+@extends('layouts.app')
+@section('title', 'Personen importeren')
+@section('content')
+<div class="mb-6">
+    <a href="{{ route('people.index') }}" class="text-sm text-slate-500 hover:text-slate-800">← Personen</a>
+    <h1 class="mt-1 text-2xl font-semibold tracking-tight">Personen importeren</h1>
+</div>
+@include('partials.import-result')
+<x-card title="Upload een CSV-bestand" class="max-w-2xl">
+    <form method="POST" action="{{ route('people.import.store') }}" enctype="multipart/form-data" class="space-y-4">
+        @csrf
+        <div>
+            <input type="file" name="file" accept=".csv,.txt" required class="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:font-medium hover:file:bg-slate-200">
+            @error('file')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
+        </div>
+        <p class="text-sm text-slate-600">Gescheiden door puntkomma of komma, UTF-8. Personen worden gevonden op e-mail of volledige naam; bestaande personen worden niet dubbel aangemaakt of overschreven, maar een nieuwe bedrijfskoppeling in het bestand wordt wel toegevoegd. Gebruik één rij per bedrijf voor personen die bij meerdere bedrijven werken. Het bedrijf moet al bestaan (gevonden op naam).</p>
+        <div class="flex items-center gap-3">
+            <button class="rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800">Importeren</button>
+            <a href="{{ route('people.import.template') }}" class="text-sm font-medium text-brand-700 hover:underline">Sjabloon downloaden</a>
+        </div>
+    </form>
+    <p class="mt-5 border-t border-slate-100 pt-4 text-xs text-slate-500"><span class="font-medium">Kolommen:</span> {{ implode(', ', $fields) }}</p>
+</x-card>
+@endsection
