@@ -19,6 +19,9 @@ enum Permission: string
     case AccessManage = 'access.manage';
     case ProjectsView = 'projects.view';
     case ProjectsEdit = 'projects.edit';
+    case HoursRegister = 'hours.register';
+    case HoursApprove = 'hours.approve';
+    case HoursManage = 'hours.manage';
 
     public function label(): string
     {
@@ -38,6 +41,9 @@ enum Permission: string
             self::AccessManage => 'Gebruikersgroepen, rechten en uitnodigingen beheren',
             self::ProjectsView => 'Projecten bekijken',
             self::ProjectsEdit => 'Projecten, diensten, uren en inkoop beheren',
+            self::HoursRegister => 'Eigen uren registreren en indienen',
+            self::HoursApprove => 'Uren van anderen goedkeuren of afkeuren',
+            self::HoursManage => 'Uren van alle medewerkers beheren, corrigeren en rapporteren',
         };
     }
 

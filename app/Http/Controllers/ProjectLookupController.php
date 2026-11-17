@@ -2,9 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\InvoiceMethod;
 use App\Models\CostType;
-use App\Models\DefaultService;
 use App\Models\HourType;
 use App\Models\RevenueGroup;
 use Illuminate\Database\Eloquent\Model;
@@ -27,7 +25,6 @@ class ProjectLookupController extends Controller
         'hour-types' => ['model' => HourType::class, 'title' => 'Urensoorten', 'extra' => 'default_rate', 'extra_label' => 'Standaard uurtarief (€)'],
         'cost-types' => ['model' => CostType::class, 'title' => 'Kostensoorten', 'extra' => 'default_margin', 'extra_label' => 'Standaard marge (%)'],
         'revenue-groups' => ['model' => RevenueGroup::class, 'title' => 'Omzetgroepen'],
-        'default-services' => ['model' => DefaultService::class, 'title' => 'Standaarddiensten', 'extra' => 'invoice_method', 'extra_label' => 'Factuurmethode'],
     ];
 
     public function index(): View
@@ -36,7 +33,6 @@ class ProjectLookupController extends Controller
 
         return view('projects.settings', [
             'sections' => collect(self::TYPES)->map(fn (array $type, string $key) => $type + ['key' => $key, 'items' => $type['model']::orderBy('name')->get()]),
-            'methods' => InvoiceMethod::options(),
         ]);
     }
 
@@ -97,8 +93,6 @@ class ProjectLookupController extends Controller
             $rules['default_rate'] = ['nullable', 'numeric', 'min:0', 'max:9999'];
         } elseif (($config['extra'] ?? null) === 'default_margin') {
             $rules['default_margin'] = ['nullable', 'numeric', 'between:0,1000'];
-        } elseif (($config['extra'] ?? null) === 'invoice_method') {
-            $rules['invoice_method'] = ['nullable', Rule::enum(InvoiceMethod::class)];
         }
 
         $data = $request->validate($rules, [], ['name' => 'naam']);

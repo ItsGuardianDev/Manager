@@ -5,12 +5,15 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CollectiveLeaveController;
 use App\Http\Controllers\CustomerGroupController;
 use App\Http\Controllers\DebtorController;
+use App\Http\Controllers\DefaultServiceController;
 use App\Http\Controllers\DisciplineController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\EmployeeAccessController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\EmployeeImportExportController;
 use App\Http\Controllers\EmploymentContractController;
+use App\Http\Controllers\HoursController;
+use App\Http\Controllers\HoursReportController;
 use App\Http\Controllers\InvitationController;
 use App\Http\Controllers\LeaveBalanceController;
 use App\Http\Controllers\LeaveReportController;
@@ -139,6 +142,31 @@ Route::middleware('auth')->group(function () {
         Route::post('notes', [NoteController::class, 'storeForProject'])->name('notes.store');
         Route::post('documents', [DocumentController::class, 'storeForProject'])->name('documents.store');
     });
+
+    // Hours
+    Route::get('hours', [HoursController::class, 'index'])->name('hours.index');
+    Route::get('hours/approvals', [HoursController::class, 'approvals'])->name('hours.approvals');
+    Route::get('hours/week', [HoursController::class, 'week'])->name('hours.week');
+    Route::post('hours/week', [HoursController::class, 'saveWeek'])->name('hours.week.save');
+    Route::post('hours/week/submit', [HoursController::class, 'submitWeek'])->name('hours.week.submit');
+    Route::post('hours/week/copy', [HoursController::class, 'copyWeek'])->name('hours.week.copy');
+    Route::get('hours/calendar', [HoursController::class, 'calendar'])->name('hours.calendar');
+    Route::get('hours/report', [HoursReportController::class, 'index'])->name('hours.report');
+    Route::get('hours/report/export', [HoursReportController::class, 'export'])->name('hours.report.export');
+    Route::post('hours/bulk', [HoursController::class, 'bulk'])->name('hours.bulk');
+    Route::post('hours', [HoursController::class, 'store'])->name('hours.store');
+    Route::put('hours/{entry}', [HoursController::class, 'update'])->name('hours.update');
+    Route::delete('hours/{entry}', [HoursController::class, 'destroy'])->name('hours.destroy');
+    Route::post('hours/{entry}/duplicate', [HoursController::class, 'duplicate'])->name('hours.duplicate');
+    Route::post('hours/{entry}/split', [HoursController::class, 'split'])->name('hours.split');
+
+    // Service catalogue
+    Route::get('services/export', [DefaultServiceController::class, 'export'])->name('services.export');
+    Route::get('services/import', [DefaultServiceController::class, 'importForm'])->name('services.import');
+    Route::post('services/import', [DefaultServiceController::class, 'import'])->name('services.import.store');
+    Route::get('services/import/template', [DefaultServiceController::class, 'template'])->name('services.import.template');
+    Route::patch('services/{service}/toggle-blocked', [DefaultServiceController::class, 'toggleBlocked'])->name('services.toggle-blocked');
+    Route::resource('services', DefaultServiceController::class)->except(['show'])->parameters(['services' => 'service']);
 
     Route::get('purchases', [PurchaseController::class, 'index'])->name('purchases.index');
     Route::get('purchases/create', [PurchaseController::class, 'create'])->name('purchases.create');

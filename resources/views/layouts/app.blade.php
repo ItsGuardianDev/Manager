@@ -25,6 +25,12 @@
         @can('projects.view')
             <a href="{{ route('projects.index') }}" class="rounded-full px-4 py-1.5 {{ request()->routeIs('projects.*', 'purchases.*', 'project-settings.*') ? 'bg-brand-500 text-white' : 'text-slate-300 hover:bg-white/10' }}">Projecten</a>
         @endcan
+        @can('projects.view')
+            <a href="{{ route('services.index') }}" class="rounded-full px-4 py-1.5 {{ request()->routeIs('services.*') ? 'bg-brand-500 text-white' : 'text-slate-300 hover:bg-white/10' }}">Diensten</a>
+        @endcan
+        @canany(['hours.register', 'hours.approve', 'hours.manage'])
+            <a href="{{ route('hours.index') }}" class="rounded-full px-4 py-1.5 {{ request()->routeIs('hours.*') ? 'bg-brand-500 text-white' : 'text-slate-300 hover:bg-white/10' }}">Uren</a>
+        @endcanany
         @if ($hrUrl)
             <a href="{{ $hrUrl }}" class="rounded-full px-4 py-1.5 {{ request()->routeIs('employees.*', 'leave-requests.*', 'absences.*', 'collective-leave.*', 'reports.*', 'teams.*', 'disciplines.*', 'user-groups.*') ? 'bg-brand-500 text-white' : 'text-slate-300 hover:bg-white/10' }}">Medewerkers</a>
         @endif

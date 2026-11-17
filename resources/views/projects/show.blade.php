@@ -194,7 +194,7 @@
             <form method="POST" action="{{ route('projects.hours.store', $project) }}" class="space-y-3">
                 @csrf
                 <x-select name="employee_id" label="Medewerker" :options="$registrableEmployees->pluck('full_name', 'id')" :selected="auth()->user()->employee?->id" />
-                <x-select name="project_service_id" label="Dienst" placeholder="— Kies een dienst —" :options="$project->services->where('is_active', true)->pluck('name', 'id')" />
+                <x-select name="project_service_id" label="Dienst" placeholder="— Kies een dienst —" :options="$project->services->where('is_active', true)->where('allow_hours', true)->pluck('name', 'id')" />
                 <x-select name="hour_type_id" label="Urensoort" placeholder="— Geen —" :options="$hourTypes" />
                 <div class="grid grid-cols-2 gap-3"><x-field name="date" label="Datum" type="date" :value="today()->format('Y-m-d')" required /><x-field name="hours" label="Uren" type="number" step="0.25" min="0.25" max="24" required /></div>
                 <x-field name="note" label="Opmerking" />
@@ -211,8 +211,8 @@
                 <thead class="sticky top-0 bg-brand-50"><tr><th class="{{ $th }}">Datum</th><th class="{{ $th }}">Medewerker</th><th class="{{ $th }}">Dienst</th><th class="{{ $th }}">Urensoort</th><th class="{{ $th }} text-right">Uren</th><th class="{{ $th }} text-right">Bedrag</th><th></th></tr></thead>
                 <tbody class="divide-y divide-slate-100">
                 @forelse ($project->timeEntries as $entry)
-                    <tr><td class="whitespace-nowrap px-4 py-2">{{ $entry->date->format('d-m-Y') }}</td><td class="px-4 py-2">{{ $entry->employee->full_name }}@if ($entry->note)<div class="text-xs text-slate-500">{{ $entry->note }}</div>@endif</td><td class="px-4 py-2">{{ $entry->service?->name ?? '—' }}</td><td class="px-4 py-2">{{ $entry->hourType?->name ?? '—' }}</td><td class="px-4 py-2 text-right">{{ $num($entry->hours) }}</td><td class="px-4 py-2 text-right">{{ $money($entry->amount()) }}</td>
-                        <td class="px-4 py-2 text-right">@if ($canEdit || auth()->user()->employee?->is($entry->employee))<form method="POST" action="{{ route('projects.hours.destroy', [$project, $entry]) }}" onsubmit="return confirm('Deze registratie verwijderen?')">@csrf @method('DELETE')<button class="text-xs text-rose-600 hover:underline">Verwijderen</button></form>@endif</td></tr>
+                    <tr><td class="whitespace-nowrap px-4 py-2">{{ $entry->date->format('d-m-Y') }}<span class="ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium {{ $entry->status->badge() }}">{{ $entry->status->label() }}</span></td><td class="px-4 py-2">{{ $entry->employee->full_name }}@if ($entry->note)<div class="text-xs text-slate-500">{{ $entry->note }}</div>@endif</td><td class="px-4 py-2">{{ $entry->service?->name ?? '—' }}</td><td class="px-4 py-2">{{ $entry->hourType?->name ?? '—' }}</td><td class="px-4 py-2 text-right">{{ $num($entry->hours) }}</td><td class="px-4 py-2 text-right">{{ $money($entry->amount()) }}</td>
+                        <td class="px-4 py-2 text-right">@if ($entry->canBeEditedBy(auth()->user()) && ! $entry->isLocked())<form method="POST" action="{{ route('projects.hours.destroy', [$project, $entry]) }}" onsubmit="return confirm('Deze registratie verwijderen?')">@csrf @method('DELETE')<button class="text-xs text-rose-600 hover:underline">Verwijderen</button></form>@endif</td></tr>
                 @empty
                     <tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">Nog geen uren geregistreerd.</td></tr>
                 @endforelse

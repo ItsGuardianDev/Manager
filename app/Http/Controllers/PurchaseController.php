@@ -12,6 +12,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class PurchaseController extends Controller
@@ -86,6 +87,10 @@ class PurchaseController extends Controller
 
                 if ($serviceId && ! $project->services()->whereKey($serviceId)->exists()) {
                     $serviceId = null;
+                }
+
+                if ($serviceId && ! $project->services()->whereKey($serviceId)->where('allow_costs', true)->exists()) {
+                    throw ValidationException::withMessages(['lines' => 'Op een van de gekozen diensten mogen geen inkoop of kosten worden geboekt.']);
                 }
 
                 $purchase->lines()->create([

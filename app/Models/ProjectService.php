@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\BillingCycle;
 use App\Enums\InvoiceMethod;
 use Illuminate\Database\Eloquent\Attributes\Guarded;
 use Illuminate\Database\Eloquent\Model;
@@ -23,6 +24,10 @@ class ProjectService extends Model
         return [
             'invoice_method' => InvoiceMethod::class,
             'is_active' => 'boolean',
+            'allow_hours' => 'boolean',
+            'allow_costs' => 'boolean',
+            'is_plannable' => 'boolean',
+            'billing_cycle' => BillingCycle::class,
             'start_date' => 'date',
             'end_date' => 'date',
             'invoice_from' => 'date',

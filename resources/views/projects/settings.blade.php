@@ -2,7 +2,8 @@
 @section('title', 'Projectinstellingen')
 @section('content')
 <div class="flex flex-col gap-4 p-4 sm:p-5 lg:h-full">
-<div class="shrink-0"><a href="{{ route('projects.index') }}" class="text-sm text-slate-500 hover:text-slate-800">← Projecten</a><h1 class="mt-1 text-2xl font-semibold tracking-tight">Urensoorten, kostensoorten en standaarddiensten</h1></div>
+<div class="shrink-0"><a href="{{ route('projects.index') }}" class="text-sm text-slate-500 hover:text-slate-800">← Projecten</a><h1 class="mt-1 text-2xl font-semibold tracking-tight">Urensoorten, kostensoorten en omzetgroepen</h1></div>
+<p class="shrink-0 text-sm text-slate-600">De standaarddiensten staan bij <a href="{{ route('services.index') }}" class="font-medium text-brand-700 hover:underline">Diensten</a>.</p>
 @error('lookup')<div class="shrink-0 rounded-xl bg-rose-50 p-3 text-sm text-rose-800 ring-1 ring-rose-200">{{ $message }}</div>@enderror
 <div class="grid min-h-0 gap-4 overflow-y-auto lg:flex-1 lg:grid-cols-2 lg:content-start">
 @foreach ($sections as $section)

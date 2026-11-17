@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\BillingCycle;
 use App\Enums\InvoiceMethod;
 use App\Models\CostType;
 use App\Models\DefaultService;
@@ -20,11 +21,28 @@ use Illuminate\View\View;
 
 class ProjectServiceController extends Controller
 {
-    public function create(Project $project): View
+    public function create(Request $request, Project $project): View
     {
         Gate::authorize('projects.edit');
 
-        return view('projects.service-form', ['project' => $project, 'service' => new ProjectService(['invoice_method' => InvoiceMethod::FixedPrice, 'is_active' => true, 'discount_percentage' => 0, 'completion_percentage' => 0]), ...$this->lookups()]);
+        $template = ($id = $request->query('default_service')) ? DefaultService::available()->with(['hourLines', 'costLines'])->find($id) : null;
+
+        $service = new ProjectService(['invoice_method' => InvoiceMethod::AfterCalculation, 'is_active' => true, 'discount_percentage' => 0, 'completion_percentage' => 0, 'allow_hours' => true, 'allow_costs' => true, 'is_plannable' => true]);
+
+        if ($template) {
+            $service->fill([
+                'default_service_id' => $template->id, 'name' => $template->name, 'description' => $template->description, 'invoice_method' => $template->invoice_method ?? InvoiceMethod::AfterCalculation,
+                'price' => $template->price, 'vat_code' => $template->vat_code, 'revenue_group_id' => $template->revenue_group_id, 'billing_cycle' => $template->billing_cycle,
+                'allow_hours' => $template->allow_hours, 'allow_costs' => $template->allow_costs, 'is_plannable' => $template->is_plannable,
+            ]);
+        }
+
+        return view('projects.service-form', [
+            'project' => $project, 'service' => $service, 'template' => $template,
+            'templateHourRows' => $template?->hourLines->map(fn ($l) => ['hour_type_id' => $l->hour_type_id, 'hours' => $l->hours, 'rate' => $l->rate])->all() ?? [],
+            'templateCostRows' => $template?->costLines->map(fn ($l) => ['cost_type_id' => $l->cost_type_id, 'quantity' => $l->quantity, 'purchase_price' => $l->purchase_price, 'margin_percentage' => $l->margin_percentage])->all() ?? [],
+            ...$this->lookups(),
+        ]);
     }
 
     public function store(Request $request, Project $project, BudgetMonitor $monitor): RedirectResponse
@@ -48,7 +66,7 @@ class ProjectServiceController extends Controller
     {
         Gate::authorize('projects.edit');
 
-        return view('projects.service-form', ['project' => $project, 'service' => $service->load(['hourLines', 'costLines']), ...$this->lookups()]);
+        return view('projects.service-form', ['project' => $project, 'service' => $service->load(['hourLines', 'costLines', 'defaultService']), 'template' => null, 'templateHourRows' => [], 'templateCostRows' => [], ...$this->lookups()]);
     }
 
     public function update(Request $request, Project $project, ProjectService $service, BudgetMonitor $monitor): RedirectResponse
@@ -56,7 +74,7 @@ class ProjectServiceController extends Controller
         Gate::authorize('projects.edit');
 
         DB::transaction(function () use ($request, $service): void {
-            $service->update($this->validated($request));
+            $service->update($this->validated($request, $service));
             $this->syncLines($service, $request);
         });
 
@@ -122,10 +140,12 @@ class ProjectServiceController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function validated(Request $request): array
+    private function validated(Request $request, ?ProjectService $existing = null): array
     {
+        $keepsTemplate = $existing && (string) $existing->default_service_id === (string) $request->input('default_service_id');
+
         $data = $request->validate([
-            'default_service_id' => ['nullable', 'exists:default_services,id'],
+            'default_service_id' => ['nullable', $keepsTemplate ? 'exists:default_services,id' : Rule::exists('default_services', 'id')->where('is_blocked', false)],
             'name' => ['required', 'string', 'max:255'],
             'invoice_method' => ['required', Rule::enum(InvoiceMethod::class)],
             'description' => ['nullable', 'string', 'max:5000'],
@@ -138,6 +158,7 @@ class ProjectServiceController extends Controller
             'discount_percentage' => ['nullable', 'numeric', 'between:0,100'],
             'completion_percentage' => ['nullable', 'integer', 'between:0,100'],
             'is_active' => ['nullable', 'boolean'],
+            'billing_cycle' => ['nullable', Rule::enum(BillingCycle::class)],
             'hour_lines' => ['nullable', 'array'],
             'hour_lines.*.hour_type_id' => ['nullable', 'exists:hour_types,id'],
             'hour_lines.*.hours' => ['nullable', 'numeric', 'min:0', 'max:99999'],
@@ -150,6 +171,18 @@ class ProjectServiceController extends Controller
         ], [], ['name' => 'omschrijving', 'invoice_method' => 'factuurmethode', 'end_date' => 'einddatum', 'price' => 'prijs', 'discount_percentage' => 'korting']);
 
         $data['is_active'] = $request->boolean('is_active', true);
+
+        foreach (['allow_hours', 'allow_costs', 'is_plannable'] as $flag) {
+            $data[$flag] = $request->boolean($flag);
+        }
+
+        $data['billing_cycle'] = $data['invoice_method'] === 'subscription' ? ($data['billing_cycle'] ?? BillingCycle::Monthly->value) : null;
+
+        $template = ! empty($data['default_service_id']) ? DefaultService::find($data['default_service_id']) : null;
+
+        if ($template && ! $template->price_editable && $template->price !== null && in_array($data['invoice_method'], ['fixed_price', 'subscription'], true)) {
+            $data['price'] = $template->price;
+        }
         $data['discount_percentage'] ??= 0;
         $data['completion_percentage'] ??= 0;
 
@@ -201,7 +234,8 @@ class ProjectServiceController extends Controller
     private function lookups(): array
     {
         return [
-            'defaultServices' => DefaultService::orderBy('name')->get(),
+            'defaultServices' => DefaultService::available()->orderBy('name')->get(),
+            'cycles' => BillingCycle::options(),
             'revenueGroups' => RevenueGroup::orderBy('name')->pluck('name', 'id'),
             'hourTypes' => HourType::orderBy('name')->get(),
             'costTypes' => CostType::orderBy('name')->get(),

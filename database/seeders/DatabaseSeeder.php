@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Enums\BalanceKind;
 use App\Enums\LedgerReason;
 use App\Models\CostType;
+use App\Models\DefaultService;
 use App\Models\Discipline;
 use App\Models\Employee;
 use App\Models\HourType;
@@ -12,6 +13,7 @@ use App\Models\LeaveType;
 use App\Models\Organization;
 use App\Models\Person;
 use App\Models\Project;
+use App\Models\RevenueGroup;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\UserGroup;
@@ -49,6 +51,7 @@ class DatabaseSeeder extends Seeder
         }
 
         if (app()->isLocal() && Project::count() === 0) {
+            $this->seedCatalog();
             $this->seedProjects();
         }
     }
@@ -76,9 +79,36 @@ class DatabaseSeeder extends Seeder
             $second->hourLines()->create(['hour_type_id' => $architect->id, 'hours' => 200, 'rate' => 125]);
 
             if ($manager && $index < 3) {
-                $project->timeEntries()->create(['employee_id' => $manager->id, 'project_service_id' => $service->id, 'hour_type_id' => $architect->id, 'date' => now()->subDays(5 + $index), 'hours' => 30 + $index * 60, 'rate' => 125, 'note' => 'Schetsen']);
+                $project->timeEntries()->create(['employee_id' => $manager->id, 'project_service_id' => $service->id, 'hour_type_id' => $architect->id, 'date' => now()->subDays(5 + $index), 'hours' => 30 + $index * 60, 'rate' => 125, 'note' => 'Schetsen', 'status' => 'approved']);
+            }
+
+            if ($manager && $index === 0) {
+                $monday = now()->startOfWeek();
+
+                foreach ([[0, '09:00', '12:30', 3.5, 'draft', 'Schetsen uitwerken'], [1, '09:00', '17:00', 8, 'submitted', 'Overleg en tekenwerk'], [2, null, null, 6, 'draft', 'Voorbereiding']] as [$offset, $start, $end, $hours, $status, $note]) {
+                    $project->timeEntries()->create(['employee_id' => $manager->id, 'project_service_id' => $service->id, 'hour_type_id' => $architect->id, 'date' => $monday->copy()->addDays($offset), 'start_time' => $start, 'end_time' => $end, 'hours' => $hours, 'rate' => 125, 'note' => $note, 'status' => $status]);
+                }
             }
         }
+    }
+
+    private function seedCatalog(): void
+    {
+        $architect = HourType::where('name', 'Architect')->first();
+        $drawer = HourType::where('name', 'Tekenaar')->first();
+        $group = RevenueGroup::first();
+
+        foreach ([['Schetsontwerp', 'fixed_price', 45050, 120, 80], ['Voorontwerp', 'fixed_price', 60000, 200, 120], ['Uitvoering', 'after_calculation', null, 0, 0], ['Interne werkzaamheden', 'after_calculation', null, 0, 0]] as [$name, $method, $price, $architectHours, $drawerHours]) {
+            $service = DefaultService::where('name', $name)->first();
+            $service?->update(['invoice_method' => $method, 'price' => $price, 'vat_code' => 'vat_21', 'revenue_group_id' => $group?->id, 'description' => $name === 'Schetsontwerp' ? 'Eerste schetsen met de opdrachtgever.' : null]);
+
+            if ($service && $architectHours > 0) {
+                $service->hourLines()->create(['hour_type_id' => $architect->id, 'hours' => $architectHours, 'rate' => 125]);
+                $service->hourLines()->create(['hour_type_id' => $drawer->id, 'hours' => $drawerHours, 'rate' => 95]);
+            }
+        }
+
+        DefaultService::where('name', 'Interne werkzaamheden')->update(['allow_costs' => false]);
     }
 
     private function seedEmployees(User $admin): void

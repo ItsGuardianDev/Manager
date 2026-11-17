@@ -4,11 +4,14 @@
 @php
     $editing = $service->exists;
     $input = 'block w-full rounded-lg border-0 bg-white px-3 py-2 text-sm shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600';
-    $hourRows = old('hour_lines', $editing ? $service->hourLines->map(fn ($l) => ['hour_type_id' => $l->hour_type_id, 'hours' => $l->hours, 'rate' => $l->rate])->all() : []);
-    $costRows = old('cost_lines', $editing ? $service->costLines->map(fn ($l) => ['cost_type_id' => $l->cost_type_id, 'quantity' => $l->quantity, 'purchase_price' => $l->purchase_price, 'margin_percentage' => $l->margin_percentage])->all() : []);
+    $hourRows = old('hour_lines', $editing ? $service->hourLines->map(fn ($l) => ['hour_type_id' => $l->hour_type_id, 'hours' => $l->hours, 'rate' => $l->rate])->all() : $templateHourRows);
+    $costRows = old('cost_lines', $editing ? $service->costLines->map(fn ($l) => ['cost_type_id' => $l->cost_type_id, 'quantity' => $l->quantity, 'purchase_price' => $l->purchase_price, 'margin_percentage' => $l->margin_percentage])->all() : $templateCostRows);
+    $origin = $template ?? $service->defaultService;
+    $priceLocked = $origin && ! $origin->price_editable && $origin->price !== null;
+    $flag = fn (string $name) => (bool) old($name, $service->{$name} ?? true);
     $hourRows = array_values($hourRows);
     $costRows = array_values($costRows);
-    while (count($hourRows) < count($hourRows) + 1 && count($hourRows) < 3) { $hourRows[] = []; }
+    while (count($hourRows) < 2) { $hourRows[] = []; }
     $hourRows[] = [];
     while (count($costRows) < 2) { $costRows[] = []; }
     $costRows[] = [];
@@ -29,11 +32,17 @@
         <section class="grid gap-x-10 gap-y-4 lg:grid-cols-3">
             <div class="space-y-4">
                 <h2 class="text-base font-semibold text-brand-700">Eigenschappen</h2>
-                <div><label class="mb-1 block text-sm font-medium text-slate-700" for="default_service_id">Standaarddienst</label>
-                    <select id="default_service_id" name="default_service_id" data-default-service class="{{ $input }}"><option value="">Kies een standaarddienst</option>@foreach ($defaultServices as $default)<option value="{{ $default->id }}" data-name="{{ $default->name }}" data-method="{{ $default->invoice_method?->value }}" @selected((string) old('default_service_id', $service->default_service_id) === (string) $default->id)>{{ $default->name }}</option>@endforeach</select></div>
+                @if ($editing)
+                    <input type="hidden" name="default_service_id" value="{{ $service->default_service_id }}">
+                    @if ($service->defaultService)<p class="text-xs text-slate-500">Gebaseerd op standaarddienst <span class="font-medium">{{ $service->defaultService->name }}</span>@if ($service->defaultService->is_blocked) (inmiddels geblokkeerd, deze dienst blijft bestaan)@endif.</p>@endif
+                @else
+                    <div><label class="mb-1 block text-sm font-medium text-slate-700" for="default_service_id">Standaarddienst</label>
+                        <select id="default_service_id" name="default_service_id" data-default-service class="{{ $input }}"><option value="">Zonder standaarddienst</option>@foreach ($defaultServices as $default)<option value="{{ $default->id }}" @selected((string) old('default_service_id', $service->default_service_id) === (string) $default->id)>{{ $default->name }}</option>@endforeach</select>
+                        @if ($template)<p class="mt-1 text-xs text-slate-500">Prijs, budgetten en instellingen zijn overgenomen. Je kunt ze hieronder aanpassen voor dit project.</p>@endif</div>
+                @endif
                 <x-field name="name" label="Omschrijving" :value="$service->name" required />
                 <x-select name="invoice_method" label="Factuurmethode" :options="$methods" :selected="$method" data-method-select />
-                <div data-price-field class="{{ in_array($method, ['fixed_price', 'subscription'], true) ? '' : 'hidden' }}"><x-field name="price" label="Prijs (€, excl. btw)" type="number" step="0.01" min="0" :value="$service->price" /></div>
+                <div data-price-field class="{{ in_array($method, ['fixed_price', 'subscription'], true) ? '' : 'hidden' }}"><x-field name="price" label="Prijs (€, excl. btw)" type="number" step="0.01" min="0" :value="$service->price" :readonly="$priceLocked" :hint="$priceLocked ? 'De prijs van deze standaarddienst kan niet worden aangepast.' : null" /><div data-cycle-field class="mt-4 {{ $method === 'subscription' ? '' : 'hidden' }}"><x-select name="billing_cycle" label="Facturatieperiode" :options="$cycles" :selected="$service->billing_cycle?->value ?? 'monthly'" /></div></div>
                 <div class="grid grid-cols-2 gap-3"><x-field name="start_date" label="Startdatum" type="date" :value="$service->start_date?->format('Y-m-d')" /><x-field name="end_date" label="Einddatum" type="date" :value="$service->end_date?->format('Y-m-d')" /></div>
             </div>
             <div class="space-y-4">
@@ -47,6 +56,7 @@
                 <x-select name="vat_code" label="Btw-code" placeholder="Kies een btw-code" :options="App\Models\Organization::VAT_CODES" :selected="$service->vat_code" />
                 <x-field name="discount_percentage" label="Korting (%)" type="number" step="0.01" min="0" max="100" :value="$service->discount_percentage" hint="Geldt voor de prijs en het urenbudget." />
                 <x-field name="completion_percentage" label="Voltooid (%)" type="number" min="0" max="100" :value="$service->completion_percentage" />
+                <div class="space-y-2 text-sm">@foreach (['allow_hours' => 'Uren mogen worden geboekt', 'allow_costs' => 'Inkoop en kosten mogen worden geboekt', 'is_plannable' => 'Inplanbaar in de capaciteitsplanning'] as $name => $label)<label class="flex items-center gap-2"><input type="hidden" name="{{ $name }}" value="0"><input type="checkbox" name="{{ $name }}" value="1" @checked($flag($name)) class="rounded border-slate-300 text-brand-600"> {{ $label }}</label>@endforeach</div>
                 <label class="flex items-center gap-2 text-sm"><input type="hidden" name="is_active" value="0"><input type="checkbox" name="is_active" value="1" @checked(old('is_active', $service->is_active)) class="rounded border-slate-300 text-brand-600"> Dienst is actief</label>
             </div>
         </section>
