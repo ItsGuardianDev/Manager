@@ -15,6 +15,7 @@ use App\Http\Controllers\EmploymentContractController;
 use App\Http\Controllers\HoursController;
 use App\Http\Controllers\HoursReportController;
 use App\Http\Controllers\InvitationController;
+use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\LeaveBalanceController;
 use App\Http\Controllers\LeaveReportController;
 use App\Http\Controllers\LeaveRequestController;
@@ -117,6 +118,31 @@ Route::middleware('auth')->group(function () {
     Route::get('documents/{document}', [DocumentController::class, 'show'])->name('documents.show');
     Route::delete('documents/{document}', [DocumentController::class, 'destroy'])->name('documents.destroy');
     Route::get('notes/{note}/attachment', [NoteController::class, 'attachment'])->name('notes.attachment');
+
+    // Invoicing
+    Route::prefix('invoicing')->group(function () {
+        Route::get('/', [InvoiceController::class, 'index'])->name('invoices.index');
+        Route::get('export', [InvoiceController::class, 'export'])->name('invoices.export');
+        Route::get('report', [InvoiceController::class, 'report'])->name('invoices.report');
+        Route::get('projects/{project}', [InvoiceController::class, 'proposal'])->name('invoices.proposal');
+        Route::post('projects/{project}/invoices', [InvoiceController::class, 'storeFromProposal'])->name('invoices.from-proposal');
+        Route::post('projects/{project}/write-off', [InvoiceController::class, 'writeOff'])->name('invoices.write-off');
+        Route::post('send-many', [InvoiceController::class, 'sendMany'])->name('invoices.send-many');
+        Route::get('invoices/create', [InvoiceController::class, 'create'])->name('invoices.create');
+        Route::post('invoices', [InvoiceController::class, 'store'])->name('invoices.store');
+        Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
+        Route::get('invoices/{invoice}/print', [InvoiceController::class, 'print'])->name('invoices.print');
+        Route::put('invoices/{invoice}', [InvoiceController::class, 'update'])->name('invoices.update');
+        Route::delete('invoices/{invoice}', [InvoiceController::class, 'destroy'])->name('invoices.destroy');
+        Route::post('invoices/{invoice}/lines', [InvoiceController::class, 'storeLine'])->name('invoices.lines.store');
+        Route::put('invoices/{invoice}/lines/{line}', [InvoiceController::class, 'updateLine'])->name('invoices.lines.update');
+        Route::delete('invoices/{invoice}/lines/{line}', [InvoiceController::class, 'destroyLine'])->name('invoices.lines.destroy');
+        Route::post('invoices/{invoice}/send', [InvoiceController::class, 'send'])->name('invoices.send');
+        Route::post('invoices/{invoice}/payments', [InvoiceController::class, 'storePayment'])->name('invoices.payments.store');
+        Route::post('invoices/{invoice}/remind', [InvoiceController::class, 'remind'])->name('invoices.remind');
+        Route::patch('invoices/{invoice}/reminders', [InvoiceController::class, 'toggleReminders'])->name('invoices.reminders');
+        Route::post('invoices/{invoice}/credit', [InvoiceController::class, 'credit'])->name('invoices.credit');
+    });
 
     // Projects
     Route::get('projects/export', [ProjectImportExportController::class, 'export'])->name('projects.export');

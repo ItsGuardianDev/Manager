@@ -22,6 +22,8 @@ enum Permission: string
     case HoursRegister = 'hours.register';
     case HoursApprove = 'hours.approve';
     case HoursManage = 'hours.manage';
+    case InvoicesView = 'invoices.view';
+    case InvoicesManage = 'invoices.manage';
 
     public function label(): string
     {
@@ -44,6 +46,8 @@ enum Permission: string
             self::HoursRegister => 'Eigen uren registreren en indienen',
             self::HoursApprove => 'Uren van anderen goedkeuren of afkeuren',
             self::HoursManage => 'Uren van alle medewerkers beheren, corrigeren en rapporteren',
+            self::InvoicesView => 'Facturen bekijken',
+            self::InvoicesManage => 'Facturen maken, versturen, crediteren en betalingen registreren',
         };
     }
 

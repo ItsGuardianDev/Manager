@@ -289,6 +289,12 @@ function fillEntryDialog(dialog, data) {
 document.addEventListener('click', (event) => {
     const opener = event.target.closest('[data-entry-open]');
 
+    if (opener && window.agendaDragged) {
+        window.agendaDragged = false;
+
+        return;
+    }
+
     if (opener) {
         const dialog = document.getElementById('entry-dialog');
         fillEntryDialog(dialog, opener.dataset.entry ? JSON.parse(opener.dataset.entry) : { date: opener.dataset.date });
@@ -371,3 +377,179 @@ document.addEventListener('input', (event) => {
     });
     sheet.querySelector('[data-week-total]').textContent = formatNumber(week);
 });
+
+/* Agenda: drag to create, move and resize hour blocks (15 minute grid). */
+(() => {
+    const SNAP = 15;
+    const agenda = document.querySelector('[data-agenda]');
+
+    if (!agenda) {
+        return;
+    }
+
+    const startHour = parseInt(agenda.dataset.startHour, 10);
+    const endHour = parseInt(agenda.dataset.endHour, 10);
+    const columns = [...agenda.querySelectorAll('[data-agenda-col]')];
+    const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+    const minuteAt = (column, clientY) => {
+        const box = column.getBoundingClientRect();
+        const raw = startHour * 60 + ((clientY - box.top) / box.height) * (endHour - startHour) * 60;
+
+        return clamp(Math.round(raw / SNAP) * SNAP, startHour * 60, endHour * 60);
+    };
+
+    const columnAt = (clientX) => columns.find((column) => {
+        const box = column.getBoundingClientRect();
+
+        return clientX >= box.left && clientX < box.right;
+    });
+
+    const place = (element, column, from, to) => {
+        const total = (endHour - startHour) * 60;
+        element.style.top = `${((from - startHour * 60) / total) * 100}%`;
+        element.style.height = `${((to - from) / total) * 100}%`;
+
+        if (element.parentElement !== column) {
+            column.appendChild(element);
+        }
+    };
+
+    const submitUpdate = (data, values) => {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = data.urls.update;
+        const token = document.querySelector('input[name="_token"]')?.value;
+        const fields = { _token: token, _method: 'PUT', employee_id: data.employee_id, project_id: data.project_id, project_service_id: data.project_service_id, hour_type_id: data.hour_type_id ?? '', note: data.note ?? '', ...values };
+
+        Object.entries(fields).forEach(([name, value]) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value ?? '';
+            form.appendChild(input);
+        });
+
+        document.body.appendChild(form);
+        form.submit();
+    };
+
+    agenda.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) {
+            return;
+        }
+
+        const block = event.target.closest('[data-entry-open]');
+        const column = event.target.closest('[data-agenda-col]');
+
+        if (block) {
+            if (block.hasAttribute('data-movable')) {
+                dragBlock(event, block, event.target.closest('[data-resize]') !== null);
+            }
+
+            return;
+        }
+
+        if (column) {
+            dragCreate(event, column);
+        }
+    });
+
+    function dragCreate(event, column) {
+        const anchor = minuteAt(column, event.clientY);
+        const ghost = document.createElement('div');
+        ghost.className = 'pointer-events-none absolute inset-x-1 rounded-lg bg-brand-500/30 ring-2 ring-brand-500';
+        let current = anchor + SNAP;
+        let moved = false;
+
+        place(ghost, column, anchor, current);
+        column.appendChild(ghost);
+
+        const move = (e) => {
+            moved = true;
+            current = minuteAt(column, e.clientY);
+
+            if (current === anchor) {
+                current = anchor + SNAP;
+            }
+
+            place(ghost, column, Math.min(anchor, current), Math.max(anchor, current));
+        };
+
+        const up = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            ghost.remove();
+
+            const from = Math.min(anchor, current);
+            const to = Math.max(anchor, current);
+            const dialog = document.getElementById('entry-dialog');
+
+            if (!dialog) {
+                return;
+            }
+
+            fillEntryDialog(dialog, { date: column.dataset.agendaCol, start_time: fromMinutes(from), end_time: fromMinutes(moved ? to : from + 60), hours: ((moved ? to - from : 60) / 60).toFixed(2) });
+            dialog.showModal();
+        };
+
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+    }
+
+    function dragBlock(event, block, resizing) {
+        const data = JSON.parse(block.dataset.entry);
+        const origin = block.parentElement;
+        const startY = event.clientY;
+        const from = toMinutes(data.start_time);
+        const to = data.end_time ? toMinutes(data.end_time) : from + Math.round(data.hours * 60);
+        let target = { column: origin, from, to };
+        let dragging = false;
+
+        const move = (e) => {
+            if (!dragging && Math.abs(e.clientY - startY) < 4 && e.clientX === event.clientX) {
+                return;
+            }
+
+            if (!dragging) {
+                dragging = true;
+                window.agendaDragged = true;
+                block.classList.add('z-30', 'opacity-80', 'shadow-lg');
+            }
+
+            if (resizing) {
+                const end = Math.max(from + SNAP, minuteAt(origin, e.clientY));
+                target = { column: origin, from, to: end };
+            } else {
+                const column = columnAt(e.clientX) ?? target.column;
+                const delta = Math.round(((e.clientY - startY) / origin.getBoundingClientRect().height) * (endHour - startHour) * 60 / SNAP) * SNAP;
+                const start = clamp(from + delta, startHour * 60, endHour * 60 - (to - from));
+                target = { column, from: start, to: start + (to - from) };
+            }
+
+            place(block, target.column, target.from, target.to);
+        };
+
+        const up = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+
+            if (!dragging) {
+                return;
+            }
+
+            setTimeout(() => { window.agendaDragged = false; }, 0);
+
+            if (target.column === origin && target.from === from && target.to === to) {
+                return;
+            }
+
+            submitUpdate(data, resizing
+                ? { date: data.date, start_time: fromMinutes(target.from), end_time: fromMinutes(target.to) }
+                : { date: target.column.dataset.agendaCol, start_time: fromMinutes(target.from), end_time: fromMinutes(target.to), hours: data.hours });
+        };
+
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+    }
+})();

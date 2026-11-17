@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\InvoiceStatus;
 use App\Enums\ProjectStatus;
 use App\Enums\PurchaseStatus;
 use App\Models\Concerns\HasTimeline;
@@ -86,6 +87,23 @@ class Project extends Model
         return $this->hasMany(TimeEntry::class)->orderByDesc('date')->orderByDesc('id');
     }
 
+    public function invoices(): HasMany
+    {
+        return $this->hasMany(Invoice::class);
+    }
+
+    /** Invoiced so far, excluding VAT; credit invoices reduce it. Requires invoices.lines to be loaded. */
+    public function invoicedAmount(): float
+    {
+        return round($this->invoices->where('status', '!=', InvoiceStatus::Draft)->sum(fn (Invoice $invoice) => $invoice->subtotal()), 2);
+    }
+
+    /** Value of draft invoices, excluding VAT. Requires invoices.lines to be loaded. */
+    public function draftInvoiceAmount(): float
+    {
+        return round($this->invoices->where('status', InvoiceStatus::Draft)->sum(fn (Invoice $invoice) => $invoice->subtotal()), 2);
+    }
+
     public function purchases(): HasMany
     {
         return $this->hasMany(Purchase::class)->orderByDesc('date')->orderByDesc('id');
@@ -107,7 +125,7 @@ class Project extends Model
     /**
      * Services must be loaded with their budget relations (see Project::BUDGET_RELATIONS).
      */
-    public const BUDGET_RELATIONS = ['services.hourLines', 'services.costLines', 'services.timeEntries', 'services.purchaseLines'];
+    public const BUDGET_RELATIONS = ['services.hourLines', 'services.costLines', 'services.timeEntries', 'services.purchaseLines', 'services.invoiceLines.invoice', 'invoices.lines'];
 
     private function activeServices()
     {

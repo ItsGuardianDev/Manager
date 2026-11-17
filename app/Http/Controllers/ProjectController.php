@@ -48,6 +48,7 @@ class ProjectController extends Controller
                 'projects' => $statsSource->count(),
                 'budget' => $statsSource->sum(fn (Project $p) => $p->totalBudget()),
                 'spent' => $statsSource->sum(fn (Project $p) => $p->totalSpent()),
+                'invoiced' => $statsSource->sum(fn (Project $p) => $p->invoicedAmount()),
                 'over' => $statsSource->filter(fn (Project $p) => $p->isOverBudget())->count(),
             ],
             'methods' => InvoiceMethod::options(),

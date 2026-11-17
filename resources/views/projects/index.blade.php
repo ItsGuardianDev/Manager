@@ -24,8 +24,8 @@
         </div>
     </div>
 
-    <div class="grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
-        @foreach ([['Projecten', $stats['projects']], ['Totaal budget', $money($stats['budget'])], ['Besteed', $money($stats['spent'])], ['Boven budget', $stats['over']]] as [$label, $value])
+    <div class="grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-5">
+        @foreach ([['Projecten', $stats['projects']], ['Totaal budget', $money($stats['budget'])], ['Besteed', $money($stats['spent'])], ['Gefactureerd', $money($stats['invoiced'])], ['Boven budget', $stats['over']]] as [$label, $value])
             <div class="rounded-2xl bg-white px-5 py-3 shadow-sm ring-1 ring-slate-200"><div class="text-xl font-semibold {{ $label === 'Boven budget' && $value > 0 ? 'text-rose-600' : 'text-ink' }}">{{ $value }}</div><div class="text-xs text-slate-500">{{ $label }}</div></div>
         @endforeach
     </div>
@@ -34,7 +34,7 @@
     <div class="min-h-0 flex-1 overflow-auto">
         <table class="min-w-full text-sm">
             <thead class="sticky top-0 z-10 bg-brand-50 text-left text-xs font-semibold text-slate-700">
-                <tr><th class="px-4 py-3">Algemeen ({{ $projects->total() }})</th><th class="px-4 py-3">Uren</th><th class="px-4 py-3">Kosten</th><th class="px-4 py-3">Budget</th><th class="px-4 py-3 text-center">Update</th></tr>
+                <tr><th class="px-4 py-3">Algemeen ({{ $projects->total() }})</th><th class="px-4 py-3">Uren</th><th class="px-4 py-3">Kosten</th><th class="px-4 py-3">Budget</th><th class="px-4 py-3">Gefactureerd</th><th class="px-4 py-3 text-center">Update</th></tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
             @forelse ($projects as $project)
@@ -68,10 +68,15 @@
                         <div class="text-xs text-slate-500">van {{ $money($project->totalBudget()) }} · {{ $project->consumption() }}%</div>
                         @if ($project->isOverBudget())<div class="mt-1 text-xs font-medium text-rose-600">Boven budget</div>@endif
                     </td>
+                    <td class="w-48 px-4 py-3">
+                        @if ($project->is_invoiceable)
+                            <dl class="grid grid-cols-[auto_1fr] gap-x-3 text-xs text-slate-600"><dt>Gefactureerd</dt><dd class="text-right font-medium text-slate-900">{{ $money($project->invoicedAmount()) }}</dd><dt>Concept</dt><dd class="text-right">{{ $money($project->draftInvoiceAmount()) }}</dd></dl>
+                        @else<span class="text-slate-400">Intern</span>@endif
+                    </td>
                     <td class="w-24 px-4 py-3 text-center"><div class="text-2xl font-semibold {{ $project->daysSinceUpdate() > 14 ? 'text-amber-500' : 'text-emerald-600' }}">{{ $project->daysSinceUpdate() }}</div><div class="text-xs text-slate-500">dagen</div></td>
                 </tr>
             @empty
-                <tr><td colspan="5" class="px-4 py-12 text-center text-slate-500">Geen projecten gevonden.</td></tr>
+                <tr><td colspan="6" class="px-4 py-12 text-center text-slate-500">Geen projecten gevonden.</td></tr>
             @endforelse
             </tbody>
         </table>

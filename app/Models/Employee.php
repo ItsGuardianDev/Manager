@@ -299,6 +299,11 @@ class Employee extends Model
             ->when(Arr::wrap($filters['contract_type'] ?? []), fn (Builder $query, array $types) => $query->whereHas(
                 'currentContract', fn (Builder $query) => $query->whereIn('contract_type', $types)
             ))
+            ->when(Arr::wrap($filters['access'] ?? []), fn (Builder $query, array $access) => $query->where(function (Builder $query) use ($access): void {
+                $query->when(in_array('yes', $access, true), fn (Builder $query) => $query->orWhereHas('user', fn (Builder $user) => $user->where('is_active', true)))
+                    ->when(in_array('blocked', $access, true), fn (Builder $query) => $query->orWhereHas('user', fn (Builder $user) => $user->where('is_active', false)))
+                    ->when(in_array('no', $access, true), fn (Builder $query) => $query->orWhereNull('user_id'));
+            }))
             ->when($status === 'active', fn (Builder $query) => $query->employed())
             ->when($status === 'left', fn (Builder $query) => $query->where(fn (Builder $query) => $query
                 ->where('is_active', false)->orWhereDate('left_at', '<', today())))

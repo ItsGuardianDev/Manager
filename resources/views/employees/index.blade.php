@@ -91,6 +91,7 @@
         <input type="hidden" name="sort" value="{{ $sort }}"><input type="hidden" name="dir" value="{{ $direction }}">
         <input type="search" name="q" value="{{ request('q') }}" placeholder="Zoeken op naam, e-mail, functie…"
                class="mb-6 block w-full rounded-lg border-0 bg-white px-3 py-2 text-sm shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-600">
+        <x-filter-group title="Toegang tot het systeem" name="access" :options="['yes' => 'Ja', 'blocked' => 'Geblokkeerd', 'no' => 'Nee']" />
         <x-filter-group title="Status" name="status" type="radio" :options="['active' => 'In dienst', 'upcoming' => 'Nog niet gestart', 'left' => 'Uit dienst', 'all' => 'Alle']" />
         <x-filter-group title="Soort medewerker" name="employee_type" :options="$employeeTypes" />
         <x-filter-group title="Team" name="team_id" :options="$teams" />

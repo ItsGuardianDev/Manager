@@ -155,7 +155,18 @@
                 </dl>
                 <a href="{{ route('organizations.edit', $organization) }}" class="mt-4 inline-block text-sm font-medium text-brand-700 hover:underline">Voorkeuren wijzigen</a>
             </x-card>
-            <x-card title="Facturen"><p class="text-sm text-slate-500">Er zijn nog geen facturen. Facturen verschijnen hier zodra de factuurmodule beschikbaar is.</p></x-card>
+            <x-card title="Facturen" flush>
+                @php($invoices = $organization->invoices()->with(['lines', 'payments', 'project'])->latest('invoice_date')->latest('id')->get())
+                @php($money = fn ($v) => \Illuminate\Support\Number::currency((float) $v, 'EUR', 'nl'))
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2 text-sm"><span class="text-slate-600">Openstaand <strong class="text-slate-900">{{ $money($invoices->where('status', \App\Enums\InvoiceStatus::Sent)->sum(fn ($invoice) => $invoice->outstanding())) }}</strong></span>@can('invoices.manage')<a href="{{ route('invoices.create', ['organization_id' => $organization->id]) }}" class="font-medium text-brand-700 hover:underline">+ Nieuwe factuur</a>@endcan</div>
+                <ul class="divide-y divide-slate-100 text-sm">
+                    @forelse ($invoices as $invoice)
+                        <li class="flex items-center justify-between gap-3 px-4 py-2.5">@can('invoices.view')<a href="{{ route('invoices.show', $invoice) }}" class="font-medium text-brand-700 hover:underline">{{ $invoice->label() }}</a>@else<span class="font-medium">{{ $invoice->label() }}</span>@endcan<span class="text-slate-500">{{ $invoice->project?->name }}</span><span class="text-slate-500">{{ $invoice->invoice_date->format('d-m-Y') }}</span><span class="rounded-full px-2 py-0.5 text-xs font-medium {{ $invoice->status->badge() }}">{{ $invoice->status->label() }}</span><span class="text-right">{{ $money($invoice->total()) }}</span></li>
+                    @empty
+                        <li class="px-4 py-6 text-center text-slate-500">Er zijn nog geen facturen voor dit bedrijf.</li>
+                    @endforelse
+                </ul>
+            </x-card>
         </div>
 
         <x-documents data-tab-panel="documents" class="lg:h-full" :documents="$organization->documents" :action="route('organizations.documents.store', $organization)" />

@@ -9,7 +9,7 @@ use Illuminate\View\View;
 class DebtorController extends Controller
 {
     /**
-     * Customers and their invoicing preferences; invoices themselves arrive with the invoicing module.
+     * Customers with their invoicing preferences and what they still owe.
      */
     public function index(Request $request): View
     {
@@ -17,7 +17,7 @@ class DebtorController extends Controller
         $direction = $request->query('dir') === 'desc' ? 'desc' : 'asc';
 
         $debtors = Organization::query()
-            ->with(['invoiceContactPerson'])
+            ->with(['invoiceContactPerson', 'invoices.lines', 'invoices.payments'])
             ->whereIn('type', ['customer', 'lead', 'prospect', 'partner'])
             ->filter($request->query())
             ->orderBy($sort, $direction)

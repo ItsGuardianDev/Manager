@@ -33,7 +33,7 @@
 
     <div class="flex min-h-[28rem] flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 lg:min-h-0 lg:flex-1">
         <div class="min-h-0 flex-1 overflow-auto">
-            <div class="grid min-w-[44rem]" style="grid-template-columns: 3.5rem repeat({{ $days->count() }}, minmax(0, 1fr));">
+            <div class="grid min-w-[44rem]" data-agenda data-start-hour="{{ $startHour }}" data-end-hour="{{ $endHour }}" style="grid-template-columns: 3.5rem repeat({{ $days->count() }}, minmax(0, 1fr));">
                 <div class="sticky top-0 z-20 border-b border-slate-200 bg-brand-50"></div>
                 @foreach ($days as $day)
                     @php
@@ -54,7 +54,7 @@
                     @php
                         $dayEntries = $entries[$day->format('Y-m-d')] ?? collect();
                     @endphp
-                    <div class="relative border-l border-slate-200 {{ $day->isWeekend() ? 'bg-slate-50/60' : '' }}" style="height: {{ ($endHour - $startHour) * $rem }}rem; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc({{ $rem }}rem - 1px), rgb(226 232 240) calc({{ $rem }}rem - 1px), rgb(226 232 240) {{ $rem }}rem);">
+                    <div data-agenda-col="{{ $day->format('Y-m-d') }}" class="relative select-none border-l border-slate-200 {{ $day->isWeekend() ? 'bg-slate-50/60' : '' }}" style="height: {{ ($endHour - $startHour) * $rem }}rem; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc({{ $rem }}rem - 1px), rgb(226 232 240) calc({{ $rem }}rem - 1px), rgb(226 232 240) {{ $rem }}rem);">
                         @foreach ($dayEntries as $entry)
                             @php
                                 $start = $minutes($entry->start_time);
@@ -63,18 +63,22 @@
                                 $top = $timed ? max(0, ($start - $startHour * 60) / 60 * $rem) : 0;
                                 $height = $timed ? max(1.25, (min($end, $endHour * 60) - max($start, $startHour * 60)) / 60 * $rem) : 1.5;
                             @endphp
-                            <button type="button" data-entry-open data-entry='@json($entry->dialogPayload($user))' title="{{ $entry->project->name }} · {{ $entry->service?->name }}"
+                            @php
+                                $payload = $entry->dialogPayload($user);
+                            @endphp
+                            <button type="button" data-entry-open data-entry='@json($payload)' @if ($timed && $payload['editable'] && ! $payload['locked']) data-movable @endif title="{{ $entry->project->name }} · {{ $entry->service?->name }}"
                                 class="{{ $timed ? 'absolute inset-x-1 overflow-hidden' : 'mx-1 mt-1 block w-[calc(100%-0.5rem)]' }} rounded-lg px-2 py-1 text-left text-xs ring-1 ring-inset {{ $tones[$entry->status->value] }}"
                                 @if ($timed) style="top: {{ $top }}rem; height: {{ $height }}rem" @endif>
                                 <div class="truncate font-semibold">{{ $entry->project->name }}</div>
                                 <div class="truncate">{{ $entry->service?->name }} · {{ $num($entry->hours) }} u{{ $entry->start_time ? ' · '.$entry->start_time.'–'.$entry->end_time : '' }}</div>
+                                @if ($timed && $payload['editable'] && ! $payload['locked'])<span data-resize class="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize"></span>@endif
                             </button>
                         @endforeach
                     </div>
                 @endforeach
             </div>
         </div>
-        <p class="shrink-0 border-t border-slate-100 px-4 py-2 text-xs text-slate-500">Klik op een registratie om te bewerken, te dupliceren, te splitsen of te verplaatsen. Uren zonder tijd staan bovenaan de dag.</p>
+        <p class="shrink-0 border-t border-slate-100 px-4 py-2 text-xs text-slate-500">Sleep over een lege plek om uren te boeken. Sleep een blok om het te verplaatsen, of trek aan de onderkant om de duur te wijzigen. Klik op een blok voor meer opties.</p>
     </div>
 </div>
 @include('hours._entry-dialog')

@@ -4,10 +4,12 @@ namespace App\Models;
 
 use App\Enums\BillingCycle;
 use App\Enums\InvoiceMethod;
+use App\Enums\InvoiceStatus;
 use Illuminate\Database\Eloquent\Attributes\Guarded;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * A service of a project: what is sold, how it is invoiced and which hours and costs are budgeted for it.
@@ -66,6 +68,23 @@ class ProjectService extends Model
     public function timeEntries(): HasMany
     {
         return $this->hasMany(TimeEntry::class);
+    }
+
+    public function invoiceLines(): HasMany
+    {
+        return $this->hasMany(InvoiceLine::class);
+    }
+
+    /** Invoiced so far excluding VAT, on sent invoices only. Requires invoiceLines.invoice to be loaded. */
+    public function invoicedAmount(): float
+    {
+        return round($this->invoiceLines->filter(fn (InvoiceLine $line) => $line->invoice->status !== InvoiceStatus::Draft)->sum(fn (InvoiceLine $line) => $line->amount()), 2);
+    }
+
+    /** Date of the most recent sent invoice that includes this service. */
+    public function lastInvoicedOn(): ?Carbon
+    {
+        return $this->invoiceLines->filter(fn (InvoiceLine $line) => $line->invoice->status !== InvoiceStatus::Draft && $line->amount() > 0)->map(fn (InvoiceLine $line) => $line->invoice->invoice_date)->max();
     }
 
     public function purchaseLines(): HasMany

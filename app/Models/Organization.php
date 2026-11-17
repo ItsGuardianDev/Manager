@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\InvoiceAttention;
 use App\Enums\InvoiceDelivery;
+use App\Enums\InvoiceStatus;
 use App\Enums\OrganizationType;
 use App\Models\Concerns\HasTimeline;
 use Illuminate\Database\Eloquent\Attributes\Guarded;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 
@@ -50,6 +52,23 @@ class Organization extends Model
      * @var array<string, string>
      */
     public const INVOICE_TEMPLATES = ['standard' => 'Standaard', 'detailed' => 'Gespecificeerd', 'compact' => 'Compact'];
+
+    public function invoices(): HasMany
+    {
+        return $this->hasMany(Invoice::class);
+    }
+
+    /** Amount still to be paid on sent invoices. Requires invoices.lines and invoices.payments to be loaded. */
+    public function outstandingAmount(): float
+    {
+        return round($this->invoices->where('status', InvoiceStatus::Sent)->sum(fn (Invoice $invoice) => $invoice->outstanding()), 2);
+    }
+
+    /** Outstanding amount on invoices past their due date. */
+    public function overdueAmount(): float
+    {
+        return round($this->invoices->where('status', InvoiceStatus::Sent)->filter(fn (Invoice $invoice) => $invoice->isOverdue())->sum(fn (Invoice $invoice) => $invoice->outstanding()), 2);
+    }
 
     public function hasDifferentPostalAddress(): bool
     {

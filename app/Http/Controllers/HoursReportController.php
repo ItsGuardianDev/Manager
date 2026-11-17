@@ -56,8 +56,8 @@ class HoursReportController extends Controller
         return XlsxWriter::make()
             ->sheet('Uren', ['Datum', 'Medewerker', 'Nummer', 'Project', 'Dienst', 'Urensoort', 'Start', 'Eind', 'Uren', 'Tarief', 'Bedrag', 'Status', 'Verwerkt voor facturatie', 'Omschrijving'],
                 $entries->map(fn (TimeEntry $e) => [$e->date, $e->employee->full_name, $e->project->number, $e->project->name, $e->service?->name, $e->hourType?->name, $e->start_time, $e->end_time, $e->hours, $e->rate, $e->amount(), $e->status->label(), $e->invoiced_at?->format('d-m-Y'), $e->note]))
-            ->sheet('Per medewerker', ['Medewerker', 'Geregistreerd', 'Goedgekeurd', 'Ingediend', 'Concept', 'Rooster', 'Verschil', 'Overuren (tijd-voor-tijd)'],
-                collect($report['byEmployee'])->map(fn (array $r) => [$r['name'], $r['hours'], $r['approved'], $r['submitted'], $r['draft'], $r['scheduled'], $r['difference'], $r['overtime']]))
+            ->sheet('Per medewerker', ['Medewerker', 'Geregistreerd', 'Goedgekeurd', 'Ingediend', 'Concept', 'Rooster', 'Verschil', 'Overuren (tijd-voor-tijd)', 'Beschikbaar', 'Productiviteit %', 'Declarabiliteit %', 'Declarabel'],
+                collect($report['byEmployee'])->map(fn (array $r) => [$r['name'], $r['hours'], $r['approved'], $r['submitted'], $r['draft'], $r['scheduled'], $r['difference'], $r['overtime'], $r['available'], $r['productivity'], $r['declarability'], $r['declarable']]))
             ->sheet('Per project', ['Nummer', 'Project', 'Uren', 'Bedrag'], collect($report['byProject'])->map(fn (array $r) => [$r['number'], $r['name'], $r['hours'], $r['amount']]))
             ->sheet('Per dienst', ['Project', 'Dienst', 'Uren', 'Bedrag'], collect($report['byService'])->map(fn (array $r) => [$r['project'], $r['name'], $r['hours'], $r['amount']]))
             ->sheet('Per urensoort', ['Urensoort', 'Uren', 'Bedrag'], collect($report['byHourType'])->map(fn (array $r) => [$r['name'], $r['hours'], $r['amount']]))
@@ -90,15 +90,23 @@ class HoursReportController extends Controller
         $overtime = LeaveLedgerEntry::where('kind', BalanceKind::TimeForTime->value)->where('reason', LedgerReason::ExtraHours->value)
             ->whereBetween('hours_date', [$from, $to])->selectRaw('employee_id, sum(hours) as hours')->groupBy('employee_id')->pluck('hours', 'employee_id');
 
-        $byEmployee = $entries->groupBy('employee_id')->map(function (Collection $group) use ($from, $to, $overtime): array {
-            /** @var Employee $employee */
-            $employee = $group->first()->employee;
+        $canSeeOthers = $user->can('hours.manage') || $user->can('hours.approve');
+        $roster = $canSeeOthers ? Employee::employed()->with('schedules')->get() : collect([$user->employee])->filter()->each->load('schedules');
+        $employees = $roster->merge($entries->pluck('employee'))->unique('id');
+        $byEntryEmployee = $entries->groupBy('employee_id');
+
+        $byEmployee = $employees->map(function (Employee $employee) use ($byEntryEmployee, $from, $to, $overtime): array {
+            $group = $byEntryEmployee->get($employee->id, collect());
             $hours = round($group->sum('hours'), 2);
             $scheduled = $employee->scheduledHours($from, $to);
             $byStatus = fn (TimeEntryStatus $status) => round($group->where('status', $status)->sum('hours'), 2);
+            $declarable = $group->filter(fn (TimeEntry $entry) => $entry->project->is_invoiceable);
+            $percentage = fn (float $part) => $scheduled > 0 ? round($part / $scheduled * 100, 2) : 0.0;
 
             return ['name' => $employee->full_name, 'hours' => $hours, 'approved' => $byStatus(TimeEntryStatus::Approved), 'submitted' => $byStatus(TimeEntryStatus::Submitted), 'draft' => $byStatus(TimeEntryStatus::Draft) + $byStatus(TimeEntryStatus::Rejected),
-                'scheduled' => $scheduled, 'difference' => round($hours - $scheduled, 2), 'overtime' => round((float) ($overtime[$employee->id] ?? 0), 2)];
+                'scheduled' => $scheduled, 'difference' => round($hours - $scheduled, 2), 'overtime' => round((float) ($overtime[$employee->id] ?? 0), 2),
+                'available' => max(0.0, round($scheduled - $hours, 2)), 'productivity' => $percentage($hours), 'declarability' => $percentage(round($declarable->sum('hours'), 2)),
+                'declarable' => round($declarable->sum(fn (TimeEntry $entry) => $entry->amount()), 2)];
         })->sortBy('name')->values()->all();
 
         return [

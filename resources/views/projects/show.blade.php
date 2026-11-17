@@ -139,7 +139,8 @@
                             <h3 class="font-semibold">{{ $service->name }}</h3>
                             @if ($service->netPrice() !== null)<div class="text-sm text-slate-600">{{ $money($service->netPrice()) }}@if ($service->discount_percentage > 0) <span class="text-xs text-emerald-700">(−{{ rtrim(rtrim(number_format($service->discount_percentage, 2, ',', ''), '0'), ',') }}% korting)</span>@endif</div>@endif
                             <span class="mt-1 inline-block rounded border border-slate-300 px-1.5 py-0.5 text-[11px] text-slate-600">{{ $service->invoice_method->label() }}</span>
-                            @if ($service->invoice_from)<div class="mt-1 text-xs text-brand-700">Factureren vanaf {{ $service->invoice_from->format('d-m-Y') }}</div>@endif
+                            @if ($service->lastInvoicedOn())<div class="mt-1 text-xs text-emerald-700">Gefactureerd op {{ $service->lastInvoicedOn()->format('d-m-Y') }} · {{ $money($service->invoicedAmount()) }}</div>
+                            @elseif ($service->invoice_from)<div class="mt-1 text-xs text-brand-700">Factureren vanaf {{ $service->invoice_from->format('d-m-Y') }}</div>@endif
                             @if ($canEdit)
                                 <form method="POST" action="{{ route('projects.services.progress', [$project, $service]) }}" class="mt-2 flex items-center gap-2 text-xs">@csrf @method('PATCH')<label class="text-slate-500">Voltooid</label><input type="number" name="completion_percentage" min="0" max="100" value="{{ $service->completion_percentage }}" class="w-16 rounded-lg border-0 px-2 py-1 text-xs ring-1 ring-inset ring-slate-300"> %<button class="text-brand-700 hover:underline">Opslaan</button></form>
                             @else<div class="mt-2 text-xs text-slate-500">Voltooid: {{ $service->completion_percentage }}%</div>@endif
@@ -256,7 +257,7 @@
     <div data-tab-panel="billing" class="grid gap-4 lg:h-full lg:grid-cols-3">
         <x-card title="Diensten en factuurmethode" flush class="lg:col-span-2">
             <table class="min-w-full text-sm">
-                <thead class="sticky top-0 bg-brand-50"><tr><th class="{{ $th }}">Dienst</th><th class="{{ $th }}">Methode</th><th class="{{ $th }} text-right">Prijs</th><th class="{{ $th }}">Factureren vanaf</th><th class="{{ $th }} text-right">Te factureren (indicatie)</th></tr></thead>
+                <thead class="sticky top-0 bg-brand-50"><tr><th class="{{ $th }}">Dienst</th><th class="{{ $th }}">Methode</th><th class="{{ $th }} text-right">Prijs</th><th class="{{ $th }}">Factureren vanaf</th><th class="{{ $th }} text-right">Te factureren (indicatie)</th><th class="{{ $th }} text-right">Gefactureerd</th></tr></thead>
                 <tbody class="divide-y divide-slate-100">
                 @forelse ($project->services->where('is_active', true) as $service)
                     @php
@@ -264,14 +265,27 @@
                             ? $service->spentHoursAmount()
                             : round(($service->netPrice() ?? 0) * $service->completion_percentage / 100, 2);
                     @endphp
-                    <tr><td class="px-4 py-2.5 font-medium">{{ $service->name }}</td><td class="px-4 py-2.5">{{ $service->invoice_method->label() }}</td><td class="px-4 py-2.5 text-right">{{ $service->netPrice() !== null ? $money($service->netPrice()) : '—' }}</td><td class="px-4 py-2.5">{{ $service->invoice_from?->format('d-m-Y') ?? '—' }}</td><td class="px-4 py-2.5 text-right">{{ $project->is_invoiceable ? $money($indication) : '—' }}</td></tr>
+                    <tr><td class="px-4 py-2.5 font-medium">{{ $service->name }}</td><td class="px-4 py-2.5">{{ $service->invoice_method->label() }}</td><td class="px-4 py-2.5 text-right">{{ $service->netPrice() !== null ? $money($service->netPrice()) : '—' }}</td><td class="px-4 py-2.5">{{ $service->invoice_from?->format('d-m-Y') ?? '—' }}</td><td class="px-4 py-2.5 text-right">{{ $project->is_invoiceable ? $money($indication) : '—' }}</td><td class="px-4 py-2.5 text-right">{{ $money($service->invoicedAmount()) }}</td></tr>
                 @empty
-                    <tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">Geen actieve diensten.</td></tr>
+                    <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Geen actieve diensten.</td></tr>
                 @endforelse
                 </tbody>
             </table>
         </x-card>
-        <x-card title="Facturen"><p class="text-sm text-slate-600">@if ($project->is_invoiceable)Dit project wordt gefactureerd. Facturen verschijnen hier zodra de module Facturen beschikbaar is. De indicatie links gaat uit van het voltooide percentage (vaste prijs) of de bestede uren (nacalculatie).@else Dit is een intern project en wordt niet gefactureerd.@endif</p></x-card>
+        <x-card title="Facturen" flush>
+            @if ($project->is_invoiceable)
+                <div class="flex items-center justify-between border-b border-slate-100 px-4 py-2 text-sm"><span class="text-slate-600">Gefactureerd <strong class="text-slate-900">{{ $money($project->invoicedAmount()) }}</strong> · Concept {{ $money($project->draftInvoiceAmount()) }}</span>@can('invoices.view')<a href="{{ route('invoices.proposal', $project) }}" class="font-medium text-brand-700 hover:underline">Te factureren</a>@endcan</div>
+                <ul class="divide-y divide-slate-100 text-sm">
+                    @forelse ($project->invoices->sortByDesc('invoice_date') as $invoice)
+                        <li class="flex items-center justify-between gap-3 px-4 py-2.5"><a href="{{ route('invoices.show', $invoice) }}" class="font-medium text-brand-700 hover:underline">{{ $invoice->label() }}</a><span class="text-slate-500">{{ $invoice->invoice_date->format('d-m-Y') }}</span><span class="rounded-full px-2 py-0.5 text-xs font-medium {{ $invoice->status->badge() }}">{{ $invoice->status->label() }}</span><span class="text-right">{{ $money($invoice->total()) }}</span></li>
+                    @empty
+                        <li class="px-4 py-6 text-center text-slate-500">Nog geen facturen voor dit project.</li>
+                    @endforelse
+                </ul>
+            @else
+                <p class="p-4 text-sm text-slate-600">Dit is een intern project en wordt niet gefactureerd.</p>
+            @endif
+        </x-card>
     </div>
 
     <x-documents data-tab-panel="documents" class="lg:h-full" :documents="$project->documents" :action="route('projects.documents.store', $project)" :can-manage="$canEdit" />
