@@ -175,9 +175,9 @@ class EmployeeImportExportController extends Controller
     {
         Gate::authorize('create', Employee::class);
 
-        $request->validate(['file' => ['required', 'file', 'mimes:csv,txt', 'max:5120']]);
+        $request->validate(['file' => ['required', 'file', 'extensions:csv,txt,xlsx', 'max:5120']]);
 
-        $rows = $this->readCsv($request->file('file'));
+        $rows = $this->readCsv($request->file('file'), self::FIELDS);
 
         if ($rows === [] || ! array_key_exists('last_name', reset($rows)) || ! array_key_exists('email', reset($rows))) {
             return back()->withErrors(['file' => 'Het bestand is leeg of mist de kolommen "last_name" en "email". Download het sjabloon voor het juiste formaat.']);
@@ -251,7 +251,7 @@ class EmployeeImportExportController extends Controller
             $employee->disciplines()->sync(array_map(fn ($name) => Discipline::firstOrCreate(['name' => $name])->id, $names($disciplineName)));
 
             if ($managerEmail) {
-                $managers[$employee->id] = [$line, strtolower($managerEmail)];
+                $managers[$employee->id] = [$line, $managerEmail];
             }
 
             if ($canContracts && ! empty($row['contract_type'])) {
@@ -274,7 +274,7 @@ class EmployeeImportExportController extends Controller
         }
 
         foreach ($managers as $employeeId => [$line, $email]) {
-            $manager = Employee::where('email', $email)->first();
+            $manager = $this->findEmployee($email);
 
             if ($manager && $manager->id !== $employeeId) {
                 Employee::whereKey($employeeId)->update(['manager_id' => $manager->id]);

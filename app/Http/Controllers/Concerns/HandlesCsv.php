@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Concerns;
 
+use App\Models\Employee;
+use App\Services\ImportNormalizer;
+use App\Services\XlsxReader;
 use Illuminate\Http\UploadedFile;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -41,29 +44,23 @@ trait HandlesCsv
     }
 
     /**
-     * Read an uploaded CSV into associative rows keyed by lower-cased header.
+     * Read an uploaded CSV or Excel file into associative rows keyed by lower-cased header.
      * Returns rows keyed by their 1-based spreadsheet line number.
+     * With $fields, Dutch (Simplicate) headings and values are translated to the importer's own format.
      *
+     * @param  array<int, string>  $fields
      * @return array<int, array<string, string>>
      */
-    protected function readCsv(UploadedFile $file): array
+    protected function readCsv(UploadedFile $file, array $fields = []): array
     {
-        $handle = fopen($file->getRealPath(), 'r');
-        $firstLine = (string) fgets($handle);
-        rewind($handle);
-
-        $delimiter = substr_count($firstLine, ';') >= substr_count($firstLine, ',') ? ';' : ',';
-
+        $normalizer = new ImportNormalizer;
         $headers = null;
         $rows = [];
-        $line = 0;
 
-        while (($record = fgetcsv($handle, 0, $delimiter, '"', '\\')) !== false) {
-            $line++;
-
+        foreach ($this->records($file) as $line => $record) {
             if ($headers === null) {
                 $record[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) $record[0]);
-                $headers = array_map(fn ($header) => strtolower(trim((string) $header)), $record);
+                $headers = array_map(fn ($header) => $fields === [] ? strtolower(trim((string) $header)) : $normalizer->field((string) $header, $fields), $record);
 
                 continue;
             }
@@ -73,12 +70,54 @@ trait HandlesCsv
             }
 
             $record = array_pad(array_slice($record, 0, count($headers)), count($headers), '');
-            $rows[$line] = array_map(fn ($value) => trim((string) $value), array_combine($headers, $record));
+            $row = [];
+
+            foreach ($headers as $index => $header) {
+                $row[$header] ??= $fields === [] ? trim((string) $record[$index]) : $normalizer->value($header, (string) $record[$index]);
+            }
+
+            $rows[$line] = $row;
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Raw records of a CSV (semicolon or comma separated) or .xlsx file, keyed by line number.
+     *
+     * @return iterable<int, array<int, string>>
+     */
+    private function records(UploadedFile $file): iterable
+    {
+        if (strtolower($file->getClientOriginalExtension()) === 'xlsx') {
+            yield from (new XlsxReader)->read($file->getRealPath());
+
+            return;
+        }
+
+        $handle = fopen($file->getRealPath(), 'r');
+        $firstLine = (string) fgets($handle);
+        rewind($handle);
+
+        $delimiter = substr_count($firstLine, ';') >= substr_count($firstLine, ',') ? ';' : ',';
+        $line = 0;
+
+        while (($record = fgetcsv($handle, 0, $delimiter, '"', '\\')) !== false) {
+            yield ++$line => $record;
         }
 
         fclose($handle);
+    }
 
-        return $rows;
+    /**
+     * Employee by e-mail address or, as Simplicate exports it, by full name.
+     */
+    protected function findEmployee(string $emailOrName): ?Employee
+    {
+        $needle = mb_strtolower(trim($emailOrName));
+
+        return Employee::where('email', $needle)->first()
+            ?? Employee::all()->first(fn (Employee $employee) => mb_strtolower($employee->full_name) === $needle);
     }
 
     protected function nullIfBlank(?string $value): ?string

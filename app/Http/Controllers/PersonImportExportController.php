@@ -101,9 +101,9 @@ class PersonImportExportController extends Controller
 
     public function import(Request $request): RedirectResponse
     {
-        $request->validate(['file' => ['required', 'file', 'mimes:csv,txt', 'max:5120']]);
+        $request->validate(['file' => ['required', 'file', 'extensions:csv,txt,xlsx', 'max:5120']]);
 
-        $rows = $this->readCsv($request->file('file'));
+        $rows = $this->readCsv($request->file('file'), self::FIELDS);
 
         if ($rows === [] || ! array_key_exists('last_name', reset($rows))) {
             return back()->withErrors(['file' => 'Het bestand is leeg of bevat geen kolom "last_name". Download het sjabloon voor het juiste formaat.']);

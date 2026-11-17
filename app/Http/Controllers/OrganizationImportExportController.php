@@ -107,9 +107,9 @@ class OrganizationImportExportController extends Controller
 
     public function import(Request $request): RedirectResponse
     {
-        $request->validate(['file' => ['required', 'file', 'mimes:csv,txt', 'max:5120']]);
+        $request->validate(['file' => ['required', 'file', 'extensions:csv,txt,xlsx', 'max:5120']]);
 
-        $rows = $this->readCsv($request->file('file'));
+        $rows = $this->readCsv($request->file('file'), self::FIELDS);
 
         if ($rows === [] || ! array_key_exists('name', reset($rows))) {
             return back()->withErrors(['file' => 'Het bestand is leeg of bevat geen kolom "name". Download het sjabloon voor het juiste formaat.']);
@@ -159,7 +159,7 @@ class OrganizationImportExportController extends Controller
                 'customer_group_id' => ($name = $this->nullIfBlank($row['customer_group'] ?? null)) ? CustomerGroup::firstOrCreate(['name' => $name])->id : null,
                 'industry_id' => ($name = $this->nullIfBlank($row['industry'] ?? null)) ? Industry::firstOrCreate(['name' => $name])->id : null,
                 'company_size_id' => ($name = $this->nullIfBlank($row['company_size'] ?? null)) ? CompanySize::firstOrCreate(['name' => $name], ['sort_order' => 99])->id : null,
-                'relation_manager_id' => ($email = $this->nullIfBlank($row['relation_manager'] ?? null)) ? User::where('email', $email)->value('id') : null,
+                'relation_manager_id' => ($email = $this->nullIfBlank($row['relation_manager'] ?? null)) ? User::where('email', $email)->orWhere('name', $email)->value('id') : null,
             ]);
 
             $result['created']++;

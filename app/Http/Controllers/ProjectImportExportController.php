@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Enums\InvoiceMethod;
 use App\Http\Controllers\Concerns\HandlesCsv;
 use App\Models\CostType;
-use App\Models\Employee;
 use App\Models\HourType;
 use App\Models\Organization;
 use App\Models\Project;
@@ -116,9 +115,9 @@ class ProjectImportExportController extends Controller
     {
         Gate::authorize('projects.edit');
 
-        $request->validate(['file' => ['required', 'file', 'mimes:csv,txt', 'max:5120']]);
+        $request->validate(['file' => ['required', 'file', 'extensions:csv,txt,xlsx', 'max:5120']]);
 
-        $rows = $this->readCsv($request->file('file'));
+        $rows = $this->readCsv($request->file('file'), self::FIELDS);
 
         if ($rows === [] || ! array_key_exists('project_name', reset($rows))) {
             return back()->withErrors(['file' => 'Het bestand is leeg of bevat geen kolom "project_name". Download het sjabloon voor het juiste formaat.']);
@@ -218,7 +217,7 @@ class ProjectImportExportController extends Controller
             return null;
         }
 
-        $manager = ($email = $this->nullIfBlank($row['manager_email'] ?? null)) ? Employee::where('email', strtolower($email))->first() : null;
+        $manager = ($email = $this->nullIfBlank($row['manager_email'] ?? null)) ? $this->findEmployee($email) : null;
 
         $project = Project::create([
             'number' => $number ?? Project::nextNumber(),

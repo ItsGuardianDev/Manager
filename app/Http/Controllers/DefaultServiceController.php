@@ -161,9 +161,9 @@ class DefaultServiceController extends Controller
     {
         Gate::authorize('projects.edit');
 
-        $request->validate(['file' => ['required', 'file', 'mimes:csv,txt', 'max:5120']]);
+        $request->validate(['file' => ['required', 'file', 'extensions:csv,txt,xlsx', 'max:5120']]);
 
-        $rows = $this->readCsv($request->file('file'));
+        $rows = $this->readCsv($request->file('file'), self::FIELDS);
 
         if ($rows === [] || ! array_key_exists('name', reset($rows))) {
             return back()->withErrors(['file' => 'Het bestand is leeg of bevat geen kolom "name". Download het sjabloon voor het juiste formaat.']);
